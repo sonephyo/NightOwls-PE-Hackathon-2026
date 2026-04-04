@@ -32,8 +32,26 @@ class TestListUrls:
         resp = client.get(f"/urls?user_id={sample_user['id']}")
         assert resp.status_code == 200
         results = resp.get_json()
-        # model_to_dict expands ForeignKeyField into a nested dict
-        assert all(u["user_id"]["id"] == sample_user["id"] for u in results)
+        assert len(results) == 1
+        # list endpoint uses recurse=False so user_id is returned as a plain integer
+        assert all(u["user_id"] == sample_user["id"] for u in results)
+
+    def test_filters_by_is_active_true(self, client, sample_user):
+        client.post("/urls", json={"original_url": "https://active.com", "is_active": True, "user_id": sample_user["id"]})
+        client.post("/urls", json={"original_url": "https://inactive.com", "is_active": False, "user_id": sample_user["id"]})
+        resp = client.get("/urls?is_active=true")
+        assert resp.status_code == 200
+        results = resp.get_json()
+        assert all(u["is_active"] is True for u in results)
+
+    def test_filters_by_is_active_false(self, client, sample_user):
+        client.post("/urls", json={"original_url": "https://active.com", "is_active": True, "user_id": sample_user["id"]})
+        client.post("/urls", json={"original_url": "https://inactive.com", "is_active": False, "user_id": sample_user["id"]})
+        resp = client.get("/urls?is_active=false")
+        assert resp.status_code == 200
+        results = resp.get_json()
+        assert len(results) == 1
+        assert all(u["is_active"] is False for u in results)
 
     def test_pagination_per_page(self, client, sample_user):
         for i in range(5):
@@ -61,6 +79,10 @@ class TestGetUrl:
         data = client.get(f"/urls/{sample_url['id']}").get_json()
         for field in ("id", "short_code", "original_url", "is_active"):
             assert field in data
+
+    def test_user_id_is_integer(self, client, sample_url, sample_user):
+        data = client.get(f"/urls/{sample_url['id']}").get_json()
+        assert data["user_id"] == sample_user["id"]
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +221,19 @@ class TestRedirectUrl:
     def test_returns_404_for_unknown_short_code(self, client):
         resp = client.get("/doesnotexist")
         assert resp.status_code == 404
+
+    def test_redirect_creates_click_event(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        events = client.get("/events").get_json()
+        click_events = [e for e in events if e["event_type"] == "click"]
+        assert len(click_events) == 1
+        assert click_events[0]["url_id"]["id"] == sample_url["id"]
+
+    def test_no_click_event_for_inactive_url(self, client, sample_url):
+        client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
+        client.get(f"/{sample_url['short_code']}")
+        events = client.get("/events").get_json()
+        assert len(events) == 0
 
 
 # ---------------------------------------------------------------------------

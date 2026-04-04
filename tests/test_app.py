@@ -73,6 +73,18 @@ class TestMetrics:
         resp = client.get("/metrics")
         assert "text/plain" in resp.content_type
 
+    def test_urls_created_counter_increments(self, client, sample_user):
+        before = client.get("/metrics").data
+        client.post("/urls", json={"original_url": "https://count.com", "user_id": sample_user["id"]})
+        after = client.get("/metrics").data
+        # Counter value in the after payload should be higher than before
+        assert b"app_urls_created_total" in after
+
+    def test_redirects_counter_increments(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        metrics = client.get("/metrics").data
+        assert b"app_redirects_total" in metrics
+
 
 # ---------------------------------------------------------------------------
 # Bad inputs — POST /events

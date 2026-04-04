@@ -43,7 +43,7 @@ def app(tmp_path_factory):
     from app.models.event import Event
 
     test_db.connect(reuse_if_open=True)
-    test_db.create_tables([User, Url, Event])
+    test_db.create_tables([User, Url, Event], safe=True)
     test_db.close()
 
     return flask_app

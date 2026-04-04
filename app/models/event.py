@@ -6,7 +6,7 @@ from app.models.url import Url
 class Event(BaseModel):
     id = AutoField()
     url_id = ForeignKeyField(Url, backref='events', column_name='url_id')
-    user_id = ForeignKeyField(User, backref='events', column_name='user_id')
+    user_id = ForeignKeyField(User, backref='events', column_name='user_id', null=True)
     event_type = CharField()
     timestamp = DateTimeField()
     details = TextField(null=True)

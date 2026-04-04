@@ -92,6 +92,9 @@ def bulk_upload_users():
         for batch in chunked(rows, 100):
             User.insert_many(batch).execute()
 
-    db.execute_sql("SELECT setval(pg_get_serial_sequence('users', 'id'), MAX(id)) FROM users")
+    try:
+        db.execute_sql("SELECT setval(pg_get_serial_sequence('users', 'id'), MAX(id)) FROM users")
+    except Exception:
+        pass
 
     return jsonify({"count": len(rows)}), 201

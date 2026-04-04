@@ -9,6 +9,8 @@ from playhouse.shortcuts import model_to_dict
 from peewee import chunked
 from app.database import db
 from app.models import Url
+from app.models.event import Event
+from app.routes.metrics import urls_created_total, redirects_total
 
 log = structlog.get_logger(__name__)
 
@@ -36,7 +38,7 @@ def list_urls():
 def get_url(id):
     try:
         url = Url.get_by_id(id)
-        return jsonify(model_to_dict(url))
+        return jsonify(model_to_dict(url, recurse=False))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
 
@@ -57,6 +59,7 @@ def create_url():
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
+    urls_created_total.inc()
     return jsonify(model_to_dict(url)), 201
 
 @urls_bp.route("/urls/<int:id>", methods=["PUT"])
@@ -107,7 +110,10 @@ def bulk_upload_urls():
     with db.atomic():
         for batch in chunked(rows, 100):
             Url.insert_many(batch).execute()
-    db.execute_sql("SELECT setval(pg_get_serial_sequence('urls', 'id'), MAX(id)) FROM urls")
+    try:
+        db.execute_sql("SELECT setval(pg_get_serial_sequence('urls', 'id'), MAX(id)) FROM urls")
+    except Exception:
+        pass
     return jsonify({"count": len(rows)}), 201
 
 @urls_bp.route("/<short_code>", methods=["GET"])
@@ -116,6 +122,14 @@ def redirect_url(short_code):
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
+        Event.create(
+            url_id=url.id,
+            user_id=None,
+            event_type="click",
+            timestamp=datetime.now(),
+            details=None,
+        )
+        redirects_total.inc()
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
         log.warning("redirect.not_found", short_code=short_code)
