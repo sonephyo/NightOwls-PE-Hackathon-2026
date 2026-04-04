@@ -110,13 +110,30 @@ def get_url_by_short_code(short_code):
 
 @urls_bp.route("/urls", methods=["POST"])
 def create_url():
-    data = request.get_json()
-    if not data or not data.get('original_url'):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid data"}), 400
+    if not data.get('original_url'):
         return jsonify({"error": "original_url required"}), 400
+
+    user_id = data.get('user_id')
+    if user_id is None:
+        return jsonify({"error": "user_id required"}), 400
+    if not isinstance(user_id, int):
+        return jsonify({"error": "user_id must be an integer"}), 400
+    if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == user_id).exists():
+        return jsonify({"error": "User not found"}), 404
+
     original_url = data['original_url']
-    if not (original_url.startswith('http://') or original_url.startswith('https://')):
+    if not isinstance(original_url, str) or not (original_url.startswith('http://') or original_url.startswith('https://')):
         return jsonify({"error": "original_url must be a valid URL"}), 400
+    if data.get('title') is not None and not isinstance(data.get('title'), str):
+        return jsonify({"error": "title must be a string"}), 400
+    if 'is_active' in data and not isinstance(data['is_active'], bool):
+        return jsonify({"error": "is_active must be a boolean"}), 400
     if explicit_code := data.get('short_code'):
+        if not isinstance(explicit_code, str) or not explicit_code:
+            return jsonify({"error": "short_code must be a non-empty string"}), 400
         if Url.select().where(Url.short_code == explicit_code).exists():
             return jsonify({"error": "short_code already exists"}), 409
         short_code = explicit_code
@@ -125,7 +142,7 @@ def create_url():
         while Url.select().where(Url.short_code == short_code).exists():
             short_code = generate_short_code()
     url = Url.create(
-        user_id=data.get('user_id'),
+        user_id=user_id,
         short_code=short_code,
         original_url=data['original_url'],
         title=data.get('title'),
@@ -142,7 +159,16 @@ def update_url(id):
     url, err = _get_url_or_404(id)
     if err:
         return err
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid data"}), 400
+    if 'original_url' in data:
+        if not isinstance(data['original_url'], str) or not (data['original_url'].startswith('http://') or data['original_url'].startswith('https://')):
+            return jsonify({"error": "original_url must be a valid URL"}), 400
+    if 'title' in data and data['title'] is not None and not isinstance(data['title'], str):
+        return jsonify({"error": "title must be a string"}), 400
+    if 'is_active' in data and not isinstance(data['is_active'], bool):
+        return jsonify({"error": "is_active must be a boolean"}), 400
     for field in ('original_url', 'title', 'is_active'):
         if field in data:
             setattr(url, field, data[field])
