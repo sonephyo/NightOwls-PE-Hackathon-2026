@@ -193,3 +193,85 @@ HTTP 400
 HTTP 400
 { "error": "Invalid data" }
 ```
+
+---
+
+## Failure Manual
+
+What happens when things break, and what to do about it.
+
+### App container crashes or is killed
+
+**What happens:** Docker detects the unexpected exit and automatically restarts the container (`restart: unless-stopped` in `docker-compose.yml`). Downtime is a few seconds.
+
+**How to simulate:**
+```bash
+docker kill pe-hackathon-template-2026-app-1
+```
+
+**How to verify it recovered:**
+```bash
+curl http://localhost:8000/health
+# → {"status": "ok"}
+```
+
+---
+
+### Database goes down
+
+**What happens:** The app is still running but every request that touches the DB returns:
+```json
+HTTP 500
+{ "error": "internal server error" }
+```
+The full exception is logged (visible in Grafana → Loki).
+
+**How to simulate:**
+```bash
+docker stop pe-hackathon-template-2026-db-1
+```
+
+**How to recover:**
+```bash
+docker start pe-hackathon-template-2026-db-1
+```
+The app reconnects automatically on the next request — no restart needed.
+
+---
+
+### App fails to start (DB not ready)
+
+**What happens:** If the DB isn't healthy when the app starts, `seed.py` fails and the container exits. Docker restarts it. This repeats until the DB is ready (the `depends_on: condition: service_healthy` in `docker-compose.yml` prevents this in normal operation).
+
+**How to identify:** Run `docker compose logs app` and look for connection refused errors.
+
+**How to fix:** Let `docker compose up` finish fully before sending requests. The healthcheck polls every 5 seconds up to 10 times.
+
+---
+
+### App process dies inside the container (OOM / unhandled signal)
+
+**What happens:** Same as a crash — Docker restarts the container automatically. Gunicorn runs with 2 workers, so if one worker dies the other continues serving requests while Docker restarts.
+
+---
+
+### Bad request data sent by a client
+
+**What happens:** The app returns a clean JSON error with an appropriate status code — it does not crash.
+
+**How to simulate:**
+```bash
+# Missing required field
+curl -s -X POST http://localhost:8000/urls \
+  -H "Content-Type: application/json" \
+  -d '{}' 
+# → {"error": "original_url required"}
+
+# Non-existent resource
+curl -s http://localhost:8000/urls/999999
+# → {"error": "URL not found"}
+
+# Completely unknown route
+curl -s http://localhost:8000/doesnotexist
+# → {"error": "not found"}
+```
