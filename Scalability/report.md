@@ -11,7 +11,7 @@ I ran the test with 50 concurrent users for the URL shortener application and th
 
 # Silver 
 
-![alt text](200_Initial_test.png)
+![alt text](200_initial_test.png)
 
 ## Initial Test Summary
 
