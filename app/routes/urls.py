@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import random
 import string
 from datetime import datetime
@@ -269,11 +270,11 @@ def redirect_url(short_code):
                 user_id=event_user_id,
                 event_type="click",
                 timestamp=datetime.now(),
-                details={
+                details=json.dumps({
                     "ip": request.remote_addr,
                     "referrer": request.referrer,
                     "user_agent": request.user_agent.string,
-                },
+                }),
             )
             redirects_total.inc()
         return redirect(url.original_url, code=302)

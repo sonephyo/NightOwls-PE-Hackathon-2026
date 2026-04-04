@@ -18,6 +18,8 @@ def event_to_dict(e):
             d['details'] = json.loads(d['details'])
         except (json.JSONDecodeError, TypeError):
             pass
+    if d.get('timestamp') is not None and not isinstance(d['timestamp'], str):
+        d['timestamp'] = d['timestamp'].isoformat()
     return d
 
 
