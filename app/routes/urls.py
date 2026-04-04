@@ -68,10 +68,18 @@ def list_urls():
     order     = request.args.get('order', 'asc')
 
     query = Url.select()
-    if user_id := request.args.get('user_id', type=int):
+    raw_user_id = request.args.get('user_id')
+    if raw_user_id is not None:
+        try:
+            user_id = int(raw_user_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "user_id must be an integer"}), 400
         query = query.where(Url.user_id == user_id)
     if (is_active := request.args.get('is_active')) is not None:
-        query = query.where(Url.is_active == (is_active.lower() == 'true'))
+        normalized = is_active.lower()
+        if normalized not in {'true', 'false'}:
+            return jsonify({"error": "is_active must be true or false"}), 400
+        query = query.where(Url.is_active == (normalized == 'true'))
     if short_code := request.args.get('short_code'):
         query = query.where(Url.short_code == short_code)
 
@@ -148,15 +156,13 @@ def create_url():
     if not data.get('original_url'):
         return jsonify({"error": "original_url required"}), 400
 
-    # TEMP (Stranger checks disabled): user_id is accepted as provided for debugging.
-    # user_id = data.get('user_id')
-    # if user_id is None:
-    #     return jsonify({"error": "user_id required"}), 400
-    # if not isinstance(user_id, int) or isinstance(user_id, bool):
-    #     return jsonify({"error": "user_id must be an integer"}), 400
-    # if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == user_id).exists():
-    #     return jsonify({"error": "invalid user_id"}), 400
     user_id = data.get('user_id')
+    if user_id is None:
+        return jsonify({"error": "user_id required"}), 400
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
+        return jsonify({"error": "user_id must be an integer"}), 400
+    if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == user_id).exists():
+        return jsonify({"error": "invalid user_id"}), 400
 
     original_url = data['original_url']
     if not isinstance(original_url, str) or not is_valid_url(original_url):
@@ -269,17 +275,15 @@ def redirect_url(short_code):
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
 
-        # TEMP (Stranger checks disabled): ignore user_id query param for debugging.
-        # raw_user_id = request.args.get('user_id')
-        # event_user_id = None
-        # if raw_user_id is not None:
-        #     try:
-        #         event_user_id = int(raw_user_id)
-        #     except (TypeError, ValueError):
-        #         return jsonify({"error": "user_id must be an integer"}), 400
-        #     if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
-        #         return jsonify({"error": "invalid user_id"}), 400
+        raw_user_id = request.args.get('user_id')
         event_user_id = None
+        if raw_user_id is not None:
+            try:
+                event_user_id = int(raw_user_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "user_id must be an integer"}), 400
+            if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
+                return jsonify({"error": "invalid user_id"}), 400
 
         with db.atomic():
             Event.create(
