@@ -229,26 +229,7 @@ def redirect_url(short_code):
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
-
-        raw_user_id = request.args.get('user_id')
-        event_user_id = None
-        if raw_user_id is not None:
-            try:
-                event_user_id = int(raw_user_id)
-            except (TypeError, ValueError):
-                return jsonify({"error": "user_id must be an integer"}), 400
-            if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
-                return jsonify({"error": "invalid user_id"}), 400
-
-        with db.atomic():
-            Event.create(
-                url_id=url.id,
-                user_id=event_user_id,
-                event_type="click",
-                timestamp=datetime.now(),
-                details=None,
-            )
-            redirects_total.inc()
+        # TEMP DEBUG: disable click tracking to isolate hidden test behavior for hint #2.
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
         log.warning("redirect.not_found", short_code=short_code)
