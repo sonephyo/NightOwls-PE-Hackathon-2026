@@ -141,6 +141,15 @@ class TestCreateUrl:
         assert resp.status_code == 201
         assert resp.get_json()["short_code"] != "dup123"
 
+    def test_create_response_includes_click_count(self, client, sample_user):
+        resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": sample_user["id"]})
+        assert resp.status_code == 201
+        assert resp.get_json()["click_count"] == 0
+
+    def test_create_response_user_id_is_integer(self, client, sample_user):
+        resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": sample_user["id"]})
+        assert resp.get_json()["user_id"] == sample_user["id"]
+
     def test_default_is_active_true(self, client, sample_user):
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": sample_user["id"]})
         assert resp.get_json()["is_active"] is True
@@ -202,6 +211,10 @@ class TestUpdateUrl:
     def test_returns_404_for_missing_url(self, client):
         resp = client.put("/urls/999999", json={"title": "x"})
         assert resp.status_code == 404
+
+    def test_update_response_includes_click_count(self, client, sample_url):
+        resp = client.put(f"/urls/{sample_url['id']}", json={"title": "new"})
+        assert "click_count" in resp.get_json()
 
 
 # ---------------------------------------------------------------------------
@@ -335,3 +348,35 @@ class TestUrlStats:
         data = client.get(f"/urls/{sample_url['id']}/stats").get_json()
         assert data["url_id"] == sample_url["id"]
         assert data["short_code"] == sample_url["short_code"]
+
+
+# ---------------------------------------------------------------------------
+# GET /urls/top
+# ---------------------------------------------------------------------------
+
+class TestTopUrls:
+    def test_returns_list(self, client):
+        resp = client.get("/urls/top")
+        assert resp.status_code == 200
+        assert isinstance(resp.get_json(), list)
+
+    def test_ordered_by_click_count_desc(self, client, sample_user):
+        url_a = client.post("/urls", json={"original_url": "https://a.com", "user_id": sample_user["id"]}).get_json()
+        url_b = client.post("/urls", json={"original_url": "https://b.com", "user_id": sample_user["id"]}).get_json()
+        # click b twice, a once
+        client.get(f"/{url_b['short_code']}")
+        client.get(f"/{url_b['short_code']}")
+        client.get(f"/{url_a['short_code']}")
+        results = client.get("/urls/top").get_json()
+        ids = [u["id"] for u in results]
+        assert ids.index(url_b["id"]) < ids.index(url_a["id"])
+
+    def test_n_param_limits_results(self, client, sample_user):
+        for i in range(5):
+            client.post("/urls", json={"original_url": f"https://x{i}.com", "user_id": sample_user["id"]})
+        results = client.get("/urls/top?n=3").get_json()
+        assert len(results) == 3
+
+    def test_each_result_has_click_count(self, client, sample_url):
+        results = client.get("/urls/top").get_json()
+        assert all("click_count" in u for u in results)

@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request, redirect
 import structlog
 from playhouse.shortcuts import model_to_dict
-from peewee import chunked
+from peewee import chunked, fn, JOIN
 from app.database import db
 from app.models import Url
 from app.models.event import Event
@@ -67,7 +67,7 @@ def create_url():
         updated_at=datetime.now()
     )
     urls_created_total.inc()
-    return jsonify(model_to_dict(url)), 201
+    return jsonify(url_to_dict(url)), 201
 
 @urls_bp.route("/urls/<int:id>", methods=["PUT"])
 def update_url(id):
@@ -84,7 +84,7 @@ def update_url(id):
         url.is_active = data['is_active']
     url.updated_at = datetime.now()
     url.save()
-    return jsonify(model_to_dict(url))
+    return jsonify(url_to_dict(url))
 
 @urls_bp.route("/urls/<int:id>", methods=["DELETE"])
 def delete_url(id):
@@ -122,6 +122,23 @@ def bulk_upload_urls():
     except Exception:
         pass
     return jsonify({"count": len(rows)}), 201
+
+@urls_bp.route("/urls/top", methods=["GET"])
+def top_urls():
+    n = request.args.get('n', 10, type=int)
+    results = (
+        Url.select(Url, fn.COUNT(Event.id).alias('click_count'))
+        .join(Event, JOIN.LEFT_OUTER, on=(Event.url_id == Url.id) & (Event.event_type == 'click'))
+        .group_by(Url.id)
+        .order_by(fn.COUNT(Event.id).desc())
+        .limit(n)
+    )
+    out = []
+    for url in results:
+        d = model_to_dict(url, recurse=False)
+        d['click_count'] = getattr(url, 'click_count', 0)
+        out.append(d)
+    return jsonify(out)
 
 @urls_bp.route("/urls/<int:id>/stats", methods=["GET"])
 def get_url_stats(id):
