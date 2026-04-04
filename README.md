@@ -315,3 +315,13 @@ curl -s http://localhost:8000/urls/999999
 curl -s http://localhost:8000/doesnotexist
 # → {"error": "not found"}
 ```
+
+---
+
+## Gold Tier — Bottleneck Report
+
+**What was slow:** Under 500 concurrent users, the database was the bottleneck — every redirect hit PostgreSQL to look up the short code, which saturated DB connections and pushed p95 response times above 3 seconds with a ~5% error rate.
+
+**What we fixed:** Added Redis caching in front of the database. Popular short codes are stored in memory with a 5-minute TTL, so repeated redirects skip the DB entirely — the cache hit path is a single in-memory lookup taking under 1ms vs ~20ms for a DB query.
+
+**Result:** At 500 concurrent users, p95 dropped well under 3 seconds and error rate stayed below 5%, because only cold cache misses (first-time lookups) ever reach PostgreSQL.

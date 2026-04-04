@@ -3,18 +3,24 @@ name: nightowls
 services:
   app:
     build: .
-    ports:
-      - "8000:8000"
+    # No ports here — Nginx is the only entry point on port 8000.
+    # Scale with: docker compose up --build --scale app=2
     environment:
       DATABASE_HOST: db
       DATABASE_PORT: 5432
       DATABASE_NAME: hackathon_db
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    deploy:
+      replicas: 2
     networks:
       - observability
     logging:
@@ -22,6 +28,31 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - observability
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - observability
 
   db:
     image: postgres:16-alpine

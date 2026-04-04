@@ -1,13 +1,17 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// Test configuration: 50 concurrent users for 1 minute
+// Silver tier: 200 concurrent users for 2 minutes
+// Traffic goes through Nginx → 2 app replicas (horizontal scaling)
 export const options = {
-  vus: 50,        // 50 concurrent virtual users
-  duration: '1m', // run for 1 minute
+  vus: 200,
+  duration: '2m',
+  thresholds: {
+    http_req_duration: ['p(95)<3000'],  // Silver requirement: under 3 seconds
+    http_req_failed: ['rate<0.05'],      // error rate under 5%
+  },
 };
 
-// Sample short codes from the seed data (urls.csv)
 const shortCodes = [
   '0Y7puX', 'joOewJ', 'YMwcJp', 'gHOkuS', 'aPgkMG',
   'IKhHtb', '6mStl9', 'wx48gY', '1U9mdL', 'Uk5jxw',
@@ -18,20 +22,16 @@ const shortCodes = [
 const BASE_URL = 'http://localhost:8000';
 
 export default function () {
-  // Pick a random short code from the list
   const shortCode = shortCodes[Math.floor(Math.random() * shortCodes.length)];
-  
-  // Test the URL redirect endpoint (core functionality)
+
   const response = http.get(`${BASE_URL}/${shortCode}`, {
-    redirects: 0, // Don't follow redirects, just check the response
+    redirects: 0,
   });
-  
-  // Verify the response
+
   check(response, {
     'redirect or not found': (r) => r.status === 302 || r.status === 404,
-    'response time < 500ms': (r) => r.timings.duration < 500,
+    'response time < 3000ms': (r) => r.timings.duration < 3000,
   });
-  
-  // Add think time between requests (1 second)
+
   sleep(1);
 }
