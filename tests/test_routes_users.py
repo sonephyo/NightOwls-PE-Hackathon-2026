@@ -80,6 +80,17 @@ class TestCreateUser:
         resp = client.post("/users", json={})
         assert resp.status_code == 400
 
+    def test_returns_400_when_body_is_string(self, client):
+        resp = client.post("/users", json="not-an-object")
+        assert resp.status_code == 400
+
+    def test_returns_400_when_unknown_field_present(self, client):
+        resp = client.post(
+            "/users",
+            json={"username": "bob", "email": "bob@x.com", "role": "admin"},
+        )
+        assert resp.status_code == 400
+
     def test_returns_400_when_username_missing(self, client):
         resp = client.post("/users", json={"email": "x@x.com"})
         assert resp.status_code == 400
@@ -112,6 +123,19 @@ class TestCreateUser:
         resp = client.post("/users", json={"username": "bob", "email": "notanemail"})
         assert resp.status_code == 400
         assert "error" in resp.get_json()
+
+    def test_returns_400_when_username_is_whitespace(self, client):
+        resp = client.post("/users", json={"username": "   ", "email": "bob@example.com"})
+        assert resp.status_code == 400
+
+    def test_returns_400_when_email_is_whitespace(self, client):
+        resp = client.post("/users", json={"username": "bob", "email": "   "})
+        assert resp.status_code == 400
+
+    def test_returns_400_when_email_already_exists(self, client):
+        client.post("/users", json={"username": "bob", "email": "dup@example.com"})
+        resp = client.post("/users", json={"username": "alice", "email": "dup@example.com"})
+        assert resp.status_code == 400
 
     def test_accepts_valid_email(self, client):
         resp = client.post("/users", json={"username": "bob", "email": "bob@example.com"})
@@ -150,6 +174,22 @@ class TestUpdateUser:
         # json=None sends no body; Flask 3 may return 415 instead of 400
         resp = client.put(f"/users/{sample_user['id']}", json=None)
         assert resp.status_code in (400, 415)
+
+    def test_returns_400_for_empty_object_payload(self, client, sample_user):
+        resp = client.put(f"/users/{sample_user['id']}", json={})
+        assert resp.status_code == 400
+
+    def test_returns_400_for_unknown_update_field(self, client, sample_user):
+        resp = client.put(f"/users/{sample_user['id']}", json={"role": "admin"})
+        assert resp.status_code == 400
+
+    def test_returns_400_when_updating_username_to_non_string(self, client, sample_user):
+        resp = client.put(f"/users/{sample_user['id']}", json={"username": 123})
+        assert resp.status_code == 400
+
+    def test_returns_400_when_updating_email_to_invalid_format(self, client, sample_user):
+        resp = client.put(f"/users/{sample_user['id']}", json={"email": "invalid"})
+        assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ Tests for the /urls routes and the short-code redirect route.
 """
 
 import io
+import re
 import pytest
 
 
@@ -35,6 +36,16 @@ class TestListUrls:
         assert len(results) == 1
         # list endpoint uses recurse=False so user_id is returned as a plain integer
         assert all(u["user_id"] == sample_user["id"] for u in results)
+
+    def test_returns_400_for_non_integer_user_id_filter(self, client):
+        resp = client.get("/urls?user_id=abc")
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_returns_400_for_float_like_user_id_filter(self, client):
+        resp = client.get("/urls?user_id=1.5")
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
 
     def test_filters_by_is_active_true(self, client, sample_user):
         client.post("/urls", json={"original_url": "https://active.com", "is_active": True, "user_id": sample_user["id"]})
@@ -157,6 +168,11 @@ class TestGetUrlByShortCode:
     def test_includes_is_active(self, client, sample_url):
         data = client.get(f"/urls/{sample_url['short_code']}").get_json()
         assert "is_active" in data
+
+    def test_returns_410_for_inactive_short_code_lookup(self, client, sample_url):
+        client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
+        resp = client.get(f"/urls/{sample_url['short_code']}")
+        assert resp.status_code == 410
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +308,13 @@ class TestCreateUrl:
         )
         assert resp.status_code == 400
 
+    def test_returns_400_for_explicit_short_code_whitespace_only(self, client, sample_user):
+        resp = client.post(
+            "/urls",
+            json={"original_url": "https://x.com", "short_code": "   ", "user_id": sample_user["id"]},
+        )
+        assert resp.status_code == 400
+
     def test_created_url_is_retrievable(self, client, sample_user):
         resp = client.post(
             "/urls",
@@ -372,6 +395,12 @@ class TestDeleteUrl:
 # ---------------------------------------------------------------------------
 
 class TestRedirectUrl:
+    def _redirects_total(self, client):
+        metrics = client.get("/metrics").data.decode("utf-8")
+        match = re.search(r"^app_redirects_total\s+([0-9.]+)$", metrics, re.MULTILINE)
+        assert match is not None
+        return float(match.group(1))
+
     def test_redirects_active_url(self, client, sample_url):
         resp = client.get(f"/{sample_url['short_code']}")
         assert resp.status_code == 302
@@ -396,6 +425,21 @@ class TestRedirectUrl:
     def test_no_click_event_for_inactive_url(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
         client.get(f"/{sample_url['short_code']}")
+        events = client.get("/events").get_json()
+        assert len(events) == 0
+
+    def test_no_redirect_metric_increment_for_inactive_url(self, client, sample_url):
+        client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
+        before = self._redirects_total(client)
+        resp = client.get(f"/{sample_url['short_code']}")
+        after = self._redirects_total(client)
+        assert resp.status_code == 410
+        assert after == before
+
+    def test_inactive_url_short_circuits_user_id_validation(self, client, sample_url):
+        client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
+        resp = client.get(f"/{sample_url['short_code']}?user_id=not-an-int")
+        assert resp.status_code == 410
         events = client.get("/events").get_json()
         assert len(events) == 0
 

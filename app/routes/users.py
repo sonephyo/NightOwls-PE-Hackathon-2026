@@ -31,6 +31,9 @@ def create_user():
 
     if not isinstance(data, dict) or not isinstance(data.get('username'), str) or not isinstance(data.get('email'), str):
         return jsonify({"error": "Invalid data"}), 400
+    unknown_fields = set(data.keys()) - {'username', 'email'}
+    if unknown_fields:
+        return jsonify({"error": "Invalid data"}), 400
     if not data['username'].strip() or not data['email'].strip():
         return jsonify({"error": "Invalid data"}), 400
     if '@' not in data['email']:
@@ -55,6 +58,12 @@ def update_user(id):
     
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
+        return jsonify({"error": "Invalid data"}), 400
+    allowed_fields = {'username', 'email'}
+    unknown_fields = set(data.keys()) - allowed_fields
+    if unknown_fields:
+        return jsonify({"error": "Invalid data"}), 400
+    if not any(field in data for field in allowed_fields):
         return jsonify({"error": "Invalid data"}), 400
 
     if 'username' in data:

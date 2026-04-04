@@ -70,6 +70,14 @@ class TestListEvents:
         assert len(results) == 1
         assert results[0]["event_type"] == "click"
 
+    def test_returns_400_for_non_integer_url_id_filter(self, client):
+        resp = client.get("/events?url_id=abc")
+        assert resp.status_code == 400
+
+    def test_returns_400_for_non_integer_user_id_filter(self, client):
+        resp = client.get("/events?user_id=abc")
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # GET /events/<id>
@@ -150,6 +158,14 @@ class TestCreateEvent:
         resp = client.post("/events", json=None)
         assert resp.status_code in (400, 415)
 
+    def test_returns_400_when_body_is_string(self, client):
+        resp = client.post("/events", json="not-an-object")
+        assert resp.status_code == 400
+
+    def test_returns_400_when_body_is_list(self, client):
+        resp = client.post("/events", json=["not", "an", "object"])
+        assert resp.status_code == 400
+
     def test_returns_400_when_url_id_missing(self, client, sample_user):
         resp = client.post("/events", json={"user_id": sample_user["id"], "event_type": "click"})
         assert resp.status_code == 400
@@ -159,6 +175,39 @@ class TestCreateEvent:
         resp = client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"]})
         assert resp.status_code == 400
         assert "error" in resp.get_json()
+
+    def test_returns_400_when_unknown_field_present(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "click",
+                "malicious": "junk",
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_returns_400_when_url_id_does_not_exist(self, client, sample_user):
+        resp = client.post(
+            "/events",
+            json={"url_id": 999999, "user_id": sample_user["id"], "event_type": "click"},
+        )
+        assert resp.status_code == 400
+
+    def test_returns_400_when_user_id_does_not_exist(self, client, sample_url):
+        resp = client.post(
+            "/events",
+            json={"url_id": sample_url["id"], "user_id": 999999, "event_type": "click"},
+        )
+        assert resp.status_code == 400
+
+    def test_returns_400_when_event_type_is_whitespace(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "   "},
+        )
+        assert resp.status_code == 400
 
     def test_timestamp_is_present_in_response(self, client, sample_user, sample_url):
         resp = client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
@@ -176,6 +225,30 @@ class TestCreateEvent:
         )
         assert resp.status_code == 201
         assert resp.get_json().get("timestamp") is not None
+
+    def test_returns_400_when_user_id_is_string(self, client, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": "notanint",
+                "event_type": "click",
+            },
+        )
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_returns_400_when_user_id_is_boolean(self, client, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": True,
+                "event_type": "click",
+            },
+        )
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
 
     def test_returns_400_when_details_is_string(self, client, sample_user, sample_url):
         resp = client.post(
@@ -294,6 +367,14 @@ class TestEventsSummary:
         data = client.get(f"/events/summary?url_id={sample_url['id']}").get_json()
         assert data["total"] == 1
         assert data["by_type"] == {"click": 1}
+
+    def test_summary_returns_400_for_non_integer_url_id_filter(self, client):
+        resp = client.get("/events/summary?url_id=abc")
+        assert resp.status_code == 400
+
+    def test_summary_returns_400_for_non_integer_user_id_filter(self, client):
+        resp = client.get("/events/summary?user_id=abc")
+        assert resp.status_code == 400
 
     def test_contains_total_and_by_type_fields(self, client):
         data = client.get("/events/summary").get_json()

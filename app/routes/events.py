@@ -10,6 +10,8 @@ from app.models import Event
 
 events_bp = Blueprint("events", __name__)
 
+_CREATE_FIELDS = {'url_id', 'user_id', 'event_type', 'details'}
+
 
 def event_to_dict(e):
     d = model_to_dict(e, recurse=False)
@@ -24,26 +26,40 @@ def event_to_dict(e):
 
 
 def _apply_filters(query):
-    if url_id := request.args.get('url_id', type=int):
+    raw_url_id = request.args.get('url_id')
+    if raw_url_id is not None:
+        try:
+            url_id = int(raw_url_id)
+        except (TypeError, ValueError):
+            return None, (jsonify({"error": "url_id must be an integer"}), 400)
         query = query.where(Event.url_id == url_id)
-    if user_id := request.args.get('user_id', type=int):
+    raw_user_id = request.args.get('user_id')
+    if raw_user_id is not None:
+        try:
+            user_id = int(raw_user_id)
+        except (TypeError, ValueError):
+            return None, (jsonify({"error": "user_id must be an integer"}), 400)
         query = query.where(Event.user_id == user_id)
     if event_type := request.args.get('event_type'):
         query = query.where(Event.event_type == event_type)
-    return query
+    return query, None
 
 
 @events_bp.route("/events", methods=["GET"])
 def list_events():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    query = _apply_filters(Event.select())
+    query, err = _apply_filters(Event.select())
+    if err:
+        return err
     return jsonify([event_to_dict(e) for e in query.paginate(page, per_page)])
 
 
 @events_bp.route("/events/summary", methods=["GET"])
 def events_summary():
-    query = _apply_filters(Event.select())
+    query, err = _apply_filters(Event.select())
+    if err:
+        return err
     rows = (
         query.select(Event.event_type, fn.COUNT(Event.id).alias('count'))
         .group_by(Event.event_type)
@@ -66,14 +82,21 @@ def create_event():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid data"}), 400
+    unknown_fields = set(data.keys()) - _CREATE_FIELDS
+    if unknown_fields:
+        return jsonify({"error": "Invalid data"}), 400
     if data.get('url_id') is None:
         return jsonify({"error": "url_id required"}), 400
     if not isinstance(data.get('url_id'), int) or isinstance(data.get('url_id'), bool):
         return jsonify({"error": "url_id must be an integer"}), 400
-    if not data.get('event_type') or not isinstance(data.get('event_type'), str):
+    if not Event.url_id.rel_model.select().where(Event.url_id.rel_model.id == data['url_id']).exists():
+        return jsonify({"error": "invalid url_id"}), 400
+    if not isinstance(data.get('event_type'), str) or not data.get('event_type').strip():
         return jsonify({"error": "event_type required"}), 400
     if data.get('user_id') is not None and (not isinstance(data.get('user_id'), int) or isinstance(data.get('user_id'), bool)):
         return jsonify({"error": "user_id must be an integer"}), 400
+    if data.get('user_id') is not None and not Event.user_id.rel_model.select().where(Event.user_id.rel_model.id == data['user_id']).exists():
+        return jsonify({"error": "invalid user_id"}), 400
     if data.get('details') is not None and not isinstance(data['details'], dict):
         return jsonify({"error": "details must be an object"}), 400
     try:

@@ -68,7 +68,12 @@ def list_urls():
     order     = request.args.get('order', 'asc')
 
     query = Url.select()
-    if user_id := request.args.get('user_id', type=int):
+    raw_user_id = request.args.get('user_id')
+    if raw_user_id is not None:
+        try:
+            user_id = int(raw_user_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "user_id must be an integer"}), 400
         query = query.where(Url.user_id == user_id)
     if (is_active := request.args.get('is_active')) is not None:
         query = query.where(Url.is_active == (is_active.lower() == 'true'))
@@ -120,6 +125,8 @@ def get_url(id):
 def get_url_by_short_code(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
+        if not url.is_active:
+            return jsonify({"error": "URL is inactive"}), 410
         return jsonify(url_to_dict(url))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
@@ -153,7 +160,7 @@ def create_url():
         return jsonify({"error": "is_active must be a boolean"}), 400
     if 'short_code' in data:
         explicit_code = data.get('short_code')
-        if not isinstance(explicit_code, str) or not explicit_code:
+        if not isinstance(explicit_code, str) or not explicit_code.strip():
             return jsonify({"error": "short_code must be a non-empty string"}), 400
         if len(explicit_code) > 10:
             return jsonify({"error": "short_code must be <= 10 chars"}), 400
