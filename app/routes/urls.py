@@ -23,11 +23,14 @@ def list_urls():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
     user_id = request.args.get('user_id', type=int)
+    is_active = request.args.get('is_active')
     query = Url.select()
     if user_id:
         query = query.where(Url.user_id == user_id)
+    if is_active is not None:
+        query = query.where(Url.is_active == (is_active.lower() == 'true'))
     urls = query.paginate(page, per_page)
-    return jsonify([model_to_dict(u) for u in urls])
+    return jsonify([model_to_dict(u, recurse=False) for u in urls])
 
 @urls_bp.route("/urls/<int:id>", methods=["GET"])
 def get_url(id):
@@ -104,6 +107,7 @@ def bulk_upload_urls():
     with db.atomic():
         for batch in chunked(rows, 100):
             Url.insert_many(batch).execute()
+    db.execute_sql("SELECT setval(pg_get_serial_sequence('urls', 'id'), MAX(id)) FROM urls")
     return jsonify({"count": len(rows)}), 201
 
 @urls_bp.route("/<short_code>", methods=["GET"])
