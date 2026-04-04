@@ -1,6 +1,5 @@
 import csv
 import io
-import json
 import random
 import string
 from datetime import datetime
@@ -227,21 +226,13 @@ def redirect_url(short_code):
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
-        event_user_id = request.args.get('user_id', type=int)
-        if event_user_id is not None and not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
-            event_user_id = None
-        click_details = {
-            "referrer": request.referrer,
-            "user_agent": request.user_agent.string,
-            "ip": request.headers.get('X-Forwarded-For') or request.remote_addr,
-        }
         with db.atomic():
             Event.create(
                 url_id=url.id,
-                user_id=event_user_id,
+                user_id=None,
                 event_type="click",
                 timestamp=datetime.now(),
-                details=json.dumps(click_details),
+                details=None,
             )
             redirects_total.inc()
         return redirect(url.original_url, code=302)
