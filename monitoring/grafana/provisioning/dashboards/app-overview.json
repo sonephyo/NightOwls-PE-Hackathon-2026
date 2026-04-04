@@ -1,15 +1,26 @@
 {
-  "title": "App Overview",
+  "title": "Flask App — Live Infrastructure Overview",
   "uid": "app-overview",
   "schemaVersion": 38,
   "version": 1,
-  "refresh": "10s",
+  "refresh": "2s",
   "panels": [
     {
+      "id": 0,
+      "title": "",
+      "type": "text",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
+      "options": {
+        "mode": "markdown",
+        "content": "## MLH PE Hack — Live Infrastructure Overview"
+      }
+    },
+    {
       "id": 1,
-      "title": "CPU Usage %",
+      "title": "CPU Usage % (now)",
+      "description": "System-wide CPU usage across all cores inside the container. Sampled every 2 seconds by a background thread and scraped by Prometheus every 2 seconds.",
       "type": "gauge",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "gridPos": { "x": 0, "y": 3, "w": 6, "h": 8 },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -29,15 +40,17 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "app_cpu_usage_percent",
-          "legendFormat": "CPU"
+          "legendFormat": "CPU",
+          "interval": "2s"
         }
       ]
     },
     {
       "id": 2,
-      "title": "RAM Usage (MB)",
+      "title": "RAM Usage (now)",
+      "description": "Resident Set Size (RSS) of the Flask/Gunicorn worker process in megabytes. Measures actual physical memory in use. Sampled every 2 seconds.",
       "type": "gauge",
-      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 8 },
+      "gridPos": { "x": 6, "y": 3, "w": 6, "h": 8 },
       "fieldConfig": {
         "defaults": {
           "unit": "decmbytes",
@@ -62,9 +75,10 @@
     },
     {
       "id": 3,
-      "title": "CPU Usage Over Time",
+      "title": "CPU Usage Over Time — 2s resolution",
+      "description": "Historical view of system CPU usage. Each data point represents a 2-second sample. Use this to spot spikes during high traffic or heavy operations.",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 8 },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -76,15 +90,17 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "app_cpu_usage_percent",
-          "legendFormat": "CPU %"
+          "legendFormat": "CPU %",
+          "interval": "2s"
         }
       ]
     },
     {
       "id": 4,
-      "title": "RAM Usage Over Time (MB)",
+      "title": "RAM Usage Over Time — 2s resolution",
+      "description": "Historical view of process memory usage in MB. Gradual growth may indicate a memory leak. Sudden drops indicate a process restart.",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 11, "w": 12, "h": 8 },
       "fieldConfig": {
         "defaults": {
           "unit": "decmbytes",
