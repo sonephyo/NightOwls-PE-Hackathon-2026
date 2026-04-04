@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 from playhouse.shortcuts import model_to_dict
-from peewee import chunked
+from peewee import chunked, fn
 from app.database import db
 from app.models import Event
 
@@ -25,13 +25,32 @@ def list_events():
     per_page = request.args.get('per_page', 50, type=int)
     url_id = request.args.get('url_id', type=int)
     user_id = request.args.get('user_id', type=int)
+    event_type = request.args.get('event_type')
     query = Event.select()
     if url_id:
         query = query.where(Event.url_id == url_id)
     if user_id:
         query = query.where(Event.user_id == user_id)
+    if event_type:
+        query = query.where(Event.event_type == event_type)
     events = query.paginate(page, per_page)
     return jsonify([event_to_dict(e) for e in events])
+
+@events_bp.route("/events/summary", methods=["GET"])
+def events_summary():
+    url_id = request.args.get('url_id', type=int)
+    query = Event.select()
+    if url_id:
+        query = query.where(Event.url_id == url_id)
+
+    rows = (
+        query.select(Event.event_type, fn.COUNT(Event.id).alias('count'))
+        .group_by(Event.event_type)
+        .tuples()
+    )
+    by_type = {row[0]: row[1] for row in rows}
+    total = sum(by_type.values())
+    return jsonify({"total": total, "by_type": by_type})
 
 @events_bp.route("/events/<int:id>", methods=["GET"])
 def get_event(id):

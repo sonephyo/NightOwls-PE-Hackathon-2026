@@ -61,6 +61,15 @@ class TestListEvents:
         assert len(results) == 1
         assert all(e["user_id"] == sample_user["id"] for e in results)
 
+    def test_filters_by_event_type(self, client, sample_user, sample_url):
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "view"})
+        resp = client.get("/events?event_type=click")
+        assert resp.status_code == 200
+        results = resp.get_json()
+        assert len(results) == 1
+        assert results[0]["event_type"] == "click"
+
 
 # ---------------------------------------------------------------------------
 # GET /events/<id>
@@ -196,6 +205,43 @@ class TestBulkUploadEvents:
     def test_returns_400_when_no_file_provided(self, client):
         resp = client.post("/events/bulk", data={}, content_type="multipart/form-data")
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# GET /events/summary
+# ---------------------------------------------------------------------------
+
+class TestEventsSummary:
+    def test_returns_200(self, client):
+        resp = client.get("/events/summary")
+        assert resp.status_code == 200
+
+    def test_empty_when_no_events(self, client):
+        data = client.get("/events/summary").get_json()
+        assert data["total"] == 0
+        assert data["by_type"] == {}
+
+    def test_counts_by_type(self, client, sample_user, sample_url):
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "view"})
+        data = client.get("/events/summary").get_json()
+        assert data["total"] == 3
+        assert data["by_type"]["click"] == 2
+        assert data["by_type"]["view"] == 1
+
+    def test_filters_by_url_id(self, client, sample_user, sample_url):
+        other_url = client.post("/urls", json={"original_url": "https://other.com", "user_id": sample_user["id"]}).get_json()
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": other_url["id"], "user_id": sample_user["id"], "event_type": "view"})
+        data = client.get(f"/events/summary?url_id={sample_url['id']}").get_json()
+        assert data["total"] == 1
+        assert data["by_type"] == {"click": 1}
+
+    def test_contains_total_and_by_type_fields(self, client):
+        data = client.get("/events/summary").get_json()
+        assert "total" in data
+        assert "by_type" in data
 
 
 # ---------------------------------------------------------------------------
