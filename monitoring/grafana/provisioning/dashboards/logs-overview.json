@@ -1,0 +1,115 @@
+{
+  "title": "Flask App — Logs",
+  "uid": "logs-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 0,
+      "title": "",
+      "type": "text",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
+      "options": {
+        "mode": "markdown",
+        "content": "## MLH PE Hack — Application Logs\nServices: `nightowls-app-1` · `nightowls-db-1` · `nightowls-alertmanager-1`"
+      }
+    },
+    {
+      "id": 1,
+      "title": "Errors & Warnings — Needs Attention",
+      "description": "Only ERROR and WARNING level logs. If this panel has entries, something needs attention.",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 3, "w": 24, "h": 10 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"nightowls-app-1\"} | json | level =~ \"error|warning\"",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "App Logs — All (Live Stream)",
+      "description": "All structured logs from the Flask app. Newest first. Click any line to expand full JSON details.",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 12 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"nightowls-app-1\"} | json",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Database Logs",
+      "description": "PostgreSQL container logs.",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 25, "w": 12, "h": 10 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"nightowls-db-1\"}",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Alertmanager Logs",
+      "description": "Alertmanager container logs — shows when alerts fire and are routed.",
+      "type": "logs",
+      "gridPos": { "x": 12, "y": 25, "w": 12, "h": 10 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"nightowls-alertmanager-1\"}",
+          "legendFormat": ""
+        }
+      ]
+    }
+  ]
+}

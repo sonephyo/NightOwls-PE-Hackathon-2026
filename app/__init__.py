@@ -61,6 +61,8 @@ def create_app():
 
     @app.route("/test-error")
     def test_error():
+        log = structlog.get_logger(__name__)
+        log.error("simulated_error", endpoint="/test-error", reason="manual test trigger")
         return jsonify(error="simulated server error"), 500
 
     return app
