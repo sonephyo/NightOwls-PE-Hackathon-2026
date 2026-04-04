@@ -118,7 +118,17 @@ def get_url_stats(id):
 @urls_bp.route("/urls/<int:id>", methods=["GET"])
 def get_url(id):
     url, err = _get_url_or_404(id)
-    return err or jsonify(url_to_dict(url))
+    if url:
+        return jsonify(url_to_dict(url))
+    # Flask routes all-digit path segments to the int converter first.
+    # Fall back to short_code lookup so numeric short codes are still accessible.
+    try:
+        short_code_url = Url.get(Url.short_code == str(id))
+        if not short_code_url.is_active:
+            return jsonify({"error": "URL is inactive"}), 410
+        return jsonify(url_to_dict(short_code_url))
+    except Url.DoesNotExist:
+        return err
 
 
 @urls_bp.route("/urls/<short_code>", methods=["GET"])

@@ -155,6 +155,20 @@ class TestGetUrlByShortCode:
         resp = client.get("/urls/doesnotexist")
         assert resp.status_code == 404
 
+    def test_numeric_short_code_is_lookupable(self, client, sample_user):
+        create = client.post(
+            "/urls",
+            json={
+                "original_url": "https://numeric-code.com",
+                "short_code": "123456",
+                "user_id": sample_user["id"],
+            },
+        )
+        assert create.status_code == 201
+        resp = client.get("/urls/123456")
+        assert resp.status_code == 200
+        assert resp.get_json()["short_code"] == "123456"
+
     def test_does_not_redirect(self, client, sample_url):
         resp = client.get(f"/urls/{sample_url['short_code']}")
         assert resp.status_code == 200
