@@ -135,8 +135,8 @@ def create_url():
     if explicit_code := data.get('short_code'):
         if not isinstance(explicit_code, str) or not explicit_code:
             return jsonify({"error": "short_code must be a non-empty string"}), 400
-        if len(explicit_code) > 10 or not explicit_code.isalnum():
-            return jsonify({"error": "short_code must be alphanumeric and <= 10 chars"}), 400
+        if len(explicit_code) > 10:
+            return jsonify({"error": "short_code must be <= 10 chars"}), 400
         if Url.select().where(Url.short_code == explicit_code).exists():
             return jsonify({"error": "short_code already exists"}), 409
         short_code = explicit_code
@@ -175,8 +175,6 @@ def update_url(id):
         return jsonify({"error": "title must be a string"}), 400
     if 'is_active' in data and not isinstance(data['is_active'], bool):
         return jsonify({"error": "is_active must be a boolean"}), 400
-    if not any(field in data for field in ('original_url', 'title', 'is_active')):
-        return jsonify({"error": "No updatable fields provided"}), 400
     for field in ('original_url', 'title', 'is_active'):
         if field in data:
             setattr(url, field, data[field])
@@ -228,8 +226,9 @@ def redirect_url(short_code):
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
-        Event.create(url_id=url.id, user_id=None, event_type="click", timestamp=datetime.now(), details=None)
-        redirects_total.inc()
+        with db.atomic():
+            Event.create(url_id=url.id, user_id=None, event_type="click", timestamp=datetime.now(), details=None)
+            redirects_total.inc()
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
         log.warning("redirect.not_found", short_code=short_code)

@@ -258,12 +258,12 @@ class TestCreateUrl:
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": 999999})
         assert resp.status_code == 404
 
-    def test_returns_400_for_invalid_explicit_short_code_format(self, client, sample_user):
+    def test_accepts_explicit_short_code_with_symbols(self, client, sample_user):
         resp = client.post(
             "/urls",
             json={"original_url": "https://x.com", "short_code": "bad-code!", "user_id": sample_user["id"]},
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 201
 
     def test_returns_400_for_explicit_short_code_too_long(self, client, sample_user):
         resp = client.post(
@@ -319,9 +319,9 @@ class TestUpdateUrl:
         resp = client.put(f"/urls/{sample_url['id']}", json="nope")
         assert resp.status_code == 400
 
-    def test_returns_400_when_no_updatable_fields_provided(self, client, sample_url):
+    def test_ignores_unknown_fields_and_returns_200(self, client, sample_url):
         resp = client.put(f"/urls/{sample_url['id']}", json={"foo": "bar"})
-        assert resp.status_code == 400
+        assert resp.status_code == 200
 
     def test_update_response_includes_click_count(self, client, sample_url):
         resp = client.put(f"/urls/{sample_url['id']}", json={"title": "new"})
