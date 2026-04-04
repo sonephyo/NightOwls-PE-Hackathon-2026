@@ -10,8 +10,28 @@ build/
 # Virtual environment
 .venv/
 
-# Environment variables
+# Environment variables — never commit real credentials
 .env
+.env.local
+.env.production
+.env.staging
+*.env
+
+# Secrets & credentials
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+credentials.json
+service-account.json
+
+# Database dumps
+*.sqlite
+*.db
+*.sql.gz
 
 # IDE
 .vscode/
@@ -20,12 +40,23 @@ build/
 *.swo
 *~
 
-# pytest
+# pytest & coverage
 .pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Grafana auto-generated data
+monitoring/grafana/data/
 
 # Judging (not visible to participants)
 judging/

@@ -98,6 +98,46 @@ Filter to warnings only: `{service="app"} | json | level="warning"`
 
 ---
 
+## Changes by Sriky
+
+### 1. Fixed CRLF line endings (`entrypoint.sh`, `Dockerfile`)
+Windows saves files with `\r\n` line endings. Linux inside Docker can't run shell scripts with `\r` characters — it would fail with `/bin/sh^M: not found`. Converted both files to LF and added `.gitattributes` to enforce this on future commits.
+
+### 2. Fixed PostgreSQL sequences after CSV seed
+When the database is seeded from CSV files with explicit IDs (1, 2, 3...), PostgreSQL's auto-increment counter doesn't advance. So the first `POST /urls` would crash with `duplicate key violates unique constraint`. Fixed by resetting all three sequences (`users`, `urls`, `events`) at the end of `seed.py`, and also ran the fix manually on the live DB.
+
+### 3. Added `GET /urls/code/<short_code>` endpoint
+There was no way to look up a URL record using its short code — only by numeric database ID. Added a new endpoint so you can fetch the full record (original URL, created date, active status, etc.) using the short code directly.
+
+**Why:** The short code is the public-facing identifier. Users and integrations know the short code, not the internal DB id.
+
+```bash
+# Before (only worked with numeric id)
+curl http://localhost:8000/urls/2003
+
+# After (works with short code too)
+curl http://localhost:8000/urls/code/2Ngd3j
+```
+
+### 4. Built a frontend UI (`app/templates/index.html`)
+Added a simple browser-based interface served at `http://localhost:8000` so the URL shortener can be demoed without using curl or Postman.
+
+**Features:**
+- Paste any URL and click Shorten (or press Enter) to generate a short code
+- Short URL is displayed as a clickable link that triggers the redirect
+- Copy button to copy the short URL to clipboard
+- If the same URL is submitted again, the existing short code is returned instead of creating a duplicate — shown with an **existing** badge
+- Table of recently shortened URLs at the bottom, each one clickable
+
+**Why:** Standard URL shortener behaviour — submitting the same URL twice should return the same short code, not create two different codes pointing to the same destination.
+
+### 5. URL deduplication in `POST /urls`
+Before this change, submitting the same `original_url` twice would create two separate records with different short codes. Now the endpoint checks if the URL already exists and returns the existing record (`200`) instead of inserting a duplicate. New URLs still return `201`.
+
+**Why:** Keeps the database clean and gives users a consistent short code for the same destination.
+
+---
+
 ## For Developers Adding Features
 
 See the [Observability Guide](#observability-guide) below for how to add logs and metrics to your routes.

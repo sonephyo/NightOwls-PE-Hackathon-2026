@@ -145,6 +145,16 @@ def get_url_by_short_code(short_code):
         return jsonify({"error": "URL not found"}), 404
 
 
+@urls_bp.route("/urls/code/<short_code>", methods=["GET"])
+def get_url_by_code(short_code):
+    try:
+        url = Url.get(Url.short_code == short_code)
+        return jsonify(model_to_dict(url))
+    except Url.DoesNotExist:
+        log.warning("url.code_not_found", short_code=short_code)
+        return jsonify({"error": "URL not found"}), 404
+
+
 @urls_bp.route("/urls", methods=["POST"])
 def create_url():
     data = request.get_json(silent=True)
@@ -171,6 +181,13 @@ def create_url():
         return jsonify({"error": "title must be a string"}), 400
     if 'is_active' in data and not isinstance(data['is_active'], bool):
         return jsonify({"error": "is_active must be a boolean"}), 400
+
+    # Deduplication: return existing record if URL already shortened
+    existing = Url.get_or_none(Url.original_url == original_url)
+    if existing:
+        log.info("url.already_exists", short_code=existing.short_code)
+        return jsonify(url_to_dict(existing)), 200
+
     if 'short_code' in data:
         explicit_code = data.get('short_code')
         if not isinstance(explicit_code, str) or not explicit_code.strip():
@@ -200,6 +217,7 @@ def create_url():
     except (DataError, IntegrityError, ValueError, TypeError) as e:
         return jsonify({"error": str(e)}), 400
     urls_created_total.inc()
+    log.info("url.created", short_code=short_code)
     return jsonify(url_to_dict(url)), 201
 
 
