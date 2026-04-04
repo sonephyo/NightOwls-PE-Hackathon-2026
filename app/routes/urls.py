@@ -5,12 +5,12 @@ import string
 from datetime import datetime
 from flask import Blueprint, jsonify, request, redirect
 import structlog
-
-log = structlog.get_logger(__name__)
 from playhouse.shortcuts import model_to_dict
 from peewee import chunked
 from app.database import db
 from app.models import Url
+
+log = structlog.get_logger(__name__)
 
 urls_bp = Blueprint("urls", __name__)
 
@@ -22,7 +22,11 @@ def generate_short_code(length=6):
 def list_urls():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    urls = Url.select().paginate(page, per_page)
+    user_id = request.args.get('user_id', type=int)
+    query = Url.select()
+    if user_id:
+        query = query.where(Url.user_id == user_id)
+    urls = query.paginate(page, per_page)
     return jsonify([model_to_dict(u) for u in urls])
 
 @urls_bp.route("/urls/<int:id>", methods=["GET"])
