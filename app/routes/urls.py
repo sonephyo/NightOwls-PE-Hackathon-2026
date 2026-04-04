@@ -27,17 +27,35 @@ def url_to_dict(url):
     ).count()
     return d
 
+_SORT_FIELDS = {
+    'id': Url.id,
+    'created_at': Url.created_at,
+    'updated_at': Url.updated_at,
+    'short_code': Url.short_code,
+    'original_url': Url.original_url,
+}
+
 @urls_bp.route("/urls", methods=["GET"])
 def list_urls():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
     user_id = request.args.get('user_id', type=int)
     is_active = request.args.get('is_active')
+    short_code = request.args.get('short_code')
+    sort_by = request.args.get('sort_by', 'id')
+    order = request.args.get('order', 'asc')
+
     query = Url.select()
     if user_id:
         query = query.where(Url.user_id == user_id)
     if is_active is not None:
         query = query.where(Url.is_active == (is_active.lower() == 'true'))
+    if short_code:
+        query = query.where(Url.short_code == short_code)
+
+    sort_field = _SORT_FIELDS.get(sort_by, Url.id)
+    query = query.order_by(sort_field.desc() if order == 'desc' else sort_field.asc())
+
     urls = query.paginate(page, per_page)
     return jsonify([url_to_dict(u) for u in urls])
 
@@ -167,6 +185,14 @@ def get_url_stats(id):
         "unique_users": unique_users,
         "last_clicked_at": last_click.timestamp.isoformat() if last_click else None,
     })
+
+@urls_bp.route("/urls/<short_code>", methods=["GET"])
+def get_url_by_short_code(short_code):
+    try:
+        url = Url.get(Url.short_code == short_code)
+        return jsonify(url_to_dict(url))
+    except Url.DoesNotExist:
+        return jsonify({"error": "URL not found"}), 404
 
 @urls_bp.route("/<short_code>", methods=["GET"])
 def redirect_url(short_code):

@@ -69,6 +69,29 @@ class TestListUrls:
         data = client.get("/urls").get_json()
         assert data[0]["click_count"] == 2
 
+    def test_filters_by_short_code(self, client, sample_user):
+        client.post("/urls", json={"original_url": "https://a.com", "short_code": "aaaa11", "user_id": sample_user["id"]})
+        client.post("/urls", json={"original_url": "https://b.com", "short_code": "bbbb22", "user_id": sample_user["id"]})
+        resp = client.get("/urls?short_code=aaaa11")
+        assert resp.status_code == 200
+        results = resp.get_json()
+        assert len(results) == 1
+        assert results[0]["short_code"] == "aaaa11"
+
+    def test_sort_by_created_at_desc(self, client, sample_user):
+        for i in range(3):
+            client.post("/urls", json={"original_url": f"https://s{i}.com", "user_id": sample_user["id"]})
+        results = client.get("/urls?sort_by=created_at&order=desc").get_json()
+        dates = [r["created_at"] for r in results]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_sort_by_id_asc_default(self, client, sample_user):
+        for i in range(3):
+            client.post("/urls", json={"original_url": f"https://t{i}.com", "user_id": sample_user["id"]})
+        results = client.get("/urls").get_json()
+        ids = [r["id"] for r in results]
+        assert ids == sorted(ids)
+
 
 # ---------------------------------------------------------------------------
 # GET /urls/<id>
@@ -103,6 +126,37 @@ class TestGetUrl:
         client.get(f"/{sample_url['short_code']}")
         data = client.get(f"/urls/{sample_url['id']}").get_json()
         assert data["click_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /urls/<short_code>  (lookup by short code, no redirect)
+# ---------------------------------------------------------------------------
+
+class TestGetUrlByShortCode:
+    def test_returns_url_info(self, client, sample_url):
+        resp = client.get(f"/urls/{sample_url['short_code']}")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["short_code"] == sample_url["short_code"]
+        assert data["original_url"] == sample_url["original_url"]
+
+    def test_returns_404_for_unknown_short_code(self, client):
+        resp = client.get("/urls/doesnotexist")
+        assert resp.status_code == 404
+
+    def test_does_not_redirect(self, client, sample_url):
+        resp = client.get(f"/urls/{sample_url['short_code']}")
+        assert resp.status_code == 200
+        assert "Location" not in resp.headers
+
+    def test_includes_click_count(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        resp = client.get(f"/urls/{sample_url['short_code']}")
+        assert resp.get_json()["click_count"] == 1
+
+    def test_includes_is_active(self, client, sample_url):
+        data = client.get(f"/urls/{sample_url['short_code']}").get_json()
+        assert "is_active" in data
 
 
 # ---------------------------------------------------------------------------
