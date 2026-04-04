@@ -123,7 +123,7 @@ def create_url():
     if not isinstance(user_id, int):
         return jsonify({"error": "user_id must be an integer"}), 400
     if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == user_id).exists():
-        return jsonify({"error": "User not found"}), 404
+        return jsonify({"error": "invalid user_id"}), 400
 
     original_url = data['original_url']
     if not isinstance(original_url, str) or not (original_url.startswith('http://') or original_url.startswith('https://')):

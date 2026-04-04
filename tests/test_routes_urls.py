@@ -254,9 +254,9 @@ class TestCreateUrl:
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": "1"})
         assert resp.status_code == 400
 
-    def test_returns_404_when_user_does_not_exist(self, client):
+    def test_returns_400_when_user_does_not_exist(self, client):
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": 999999})
-        assert resp.status_code == 404
+        assert resp.status_code == 400
 
     def test_accepts_explicit_short_code_with_symbols(self, client, sample_user):
         resp = client.post(
