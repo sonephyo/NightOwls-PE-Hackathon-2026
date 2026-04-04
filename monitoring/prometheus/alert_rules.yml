@@ -18,7 +18,7 @@ groups:
             sum(rate(http_requests_total[2m]))
           ) > 0.10
           and
-          sum(rate(http_requests_total[2m])) > 0.0833
+          sum(rate(http_requests_total[2m])) > 1
         for: 1m
         labels:
           severity: critical
