@@ -1,14 +1,17 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// Silver tier: 200 concurrent users for 2 minutes
-// Traffic goes through Nginx → 2 app replicas (horizontal scaling)
+// Extreme tier: 1000 concurrent users for 2 minutes
+// Beyond the quest requirements — stress testing the limits of the stack.
 export const options = {
-  vus: 200,
-  duration: '2m',
+  stages: [
+    { duration: '20s', target: 1000 },  // ramp up to 1000
+    { duration: '2m',  target: 1000 },  // hold at 1000
+    { duration: '10s', target: 0    },  // ramp down
+  ],
   thresholds: {
-    http_req_duration: ['p(95)<3000'],  // Silver requirement: under 3 seconds
-    http_req_failed: ['rate<0.05'],      // error rate under 5%
+    http_req_duration: ['p(95)<3000'],
+    http_req_failed: ['rate<0.05'],
   },
 };
 

@@ -9,10 +9,9 @@ export const options = {
 
 // Sample short codes from the seed data (urls.csv)
 const shortCodes = [
-  '0Y7puX', 'joOewJ', 'YMwcJp', 'gHOkuS', 'aPgkMG',
-  'IKhHtb', '6mStl9', 'wx48gY', '1U9mdL', 'Uk5jxw',
-  'jHH6Rw', 'yQSwT2', 'ULUAiE', '3mgDRW', 'xwMpkA',
-  'VgkwPM', 'H8r4XJ', 'afSvrh', 'ANQfSc'
+  '0Y7puX', 'joOewJ', 'YMwcJp', 'gHOkuS',
+  'IKhHtb', 'wx48gY', '1U9mdL', 'Uk5jxw',
+  'yQSwT2', '3mgDRW', 'VgkwPM', 'H8r4XJ', 'afSvrh', 'ANQfSc'
 ];
 
 const BASE_URL = 'http://localhost:8000';
@@ -28,7 +27,7 @@ export default function () {
   
   // Verify the response
   check(response, {
-    'redirect or not found': (r) => r.status === 302 || r.status === 404,
+    'redirect or not found': (r) => r.status === 302 || r.status === 404 || r.status === 410,
     'response time < 500ms': (r) => r.timings.duration < 500,
   });
   

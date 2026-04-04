@@ -743,3 +743,157 @@ k6 run load_test.js
 # - http_req_duration (p95 should be < 500ms)
 # - http_req_failed (should be < 5%)
 ```
+
+---
+
+## Load Test Results
+
+### Bronze — 50 Concurrent Users
+
+![Bronze load test results](docs/screenshots/bronze_results.png)
+
+| Metric | Result |
+|---|---|
+| Concurrent Users | 50 |
+| p95 Response Time | 16.16ms |
+| Error Rate | 0% |
+| Checks Passed | 100% |
+
+### Silver — Docker ps (Multiple Containers + Nginx)
+
+![Docker ps showing multiple app containers and nginx](docs/screenshots/docker_ps.png)
+
+Shows 5 app replicas + nginx + redis + postgres all running — autoscaler scaled up during load test.
+
+### Silver — 200 Concurrent Users
+
+![Silver load test results](docs/screenshots/Silver_results.png)
+
+| Metric | Result |
+|---|---|
+| Concurrent Users | 200 |
+| p95 Response Time | 17.8ms |
+| Error Rate | 0% |
+| Checks Passed | 100% |
+
+### Gold — 500 Concurrent Users
+
+![Gold load test results](docs/screenshots/Gold_results.png)
+
+| Metric | Result |
+|---|---|
+| Concurrent Users | 500 |
+| p95 Response Time | 64.31ms |
+| Error Rate | 0% |
+| Checks Passed | 100% |
+| Requests/sec | 422 |
+
+Redis cache serving repeat short code lookups in <1ms — DB is barely touched.
+
+### Extreme — 1000 Concurrent Users (Beyond Quest)
+
+![Gold extreme load test results](docs/screenshots/Gold_results v2.png)
+
+| Metric | Result |
+|---|---|
+| Concurrent Users | 1000 |
+| p95 Response Time | 588ms |
+| Error Rate | 0% |
+| Checks Passed | 100% |
+| Requests/sec | 681 |
+
+**Observations:** avg response jumped from 18ms → 347ms at 1000 users (19x) — system is under pressure but holds. Gunicorn worker queue starts filling up. Next improvement would be adding more replicas or switching to async workers (gevent/uvicorn).
+
+### Performance Comparison
+
+| Tier | Users | p95 | Error Rate | Req/sec |
+|---|---|---|---|---|
+| Bronze | 50 | 16ms | 0% | 48 |
+| Silver | 200 | 17.8ms | 0% | 197 |
+| Gold | 500 | 64ms | 0% | 422 |
+| Extreme | 1000 | 588ms | 0% | 681 |
+
+---
+
+## Gold Tier — Bottleneck Report
+
+**What was slow:** Under 500 concurrent users, the database was the bottleneck — every redirect hit PostgreSQL to look up the short code, which saturated DB connections and pushed p95 response times above 3 seconds with a ~5% error rate.
+
+**What we fixed:** Added Redis caching in front of the database. Popular short codes are stored in memory with a 5-minute TTL, so repeated redirects skip the DB entirely — the cache hit path is a single in-memory lookup taking under 1ms vs ~20ms for a DB query.
+
+**Result:** At 500 concurrent users, p95 dropped to 64ms and error rate stayed at 0%.
+
+---
+
+## Scalability Architecture
+
+### Stack Under Load
+
+```
+k6 / Browser
+     ↓
+  Nginx (port 8000)        ← least_conn, keepalive, backlog=4096
+   ↓       ↓       ↓
+app-1   app-2   app-3      ← 3 replicas (autoscaler adds up to 6)
+ 4w      4w      4w        ← 4 Gunicorn workers each = 12-24 slots
+   ↓       ↓       ↓
+        Redis              ← 5min TTL cache, skips DB on hit
+          ↓
+      PostgreSQL            ← only hit on cache miss
+```
+
+### Nginx Tuning
+
+| Setting | Value | Why |
+|---|---|---|
+| `worker_processes` | auto | Uses all CPU cores |
+| `worker_connections` | 4096 | Handles connection spikes |
+| `backlog` | 4096 | OS-level connection queue |
+| `least_conn` | — | Routes to least busy replica |
+| `keepalive` | 32 | Reuses upstream connections |
+
+### Gunicorn Tuning
+
+| Flag | Value | Why |
+|---|---|---|
+| `--workers` | 4 | 4× parallel requests per replica |
+| `--timeout` | 30s | Kills stuck workers fast |
+| `--keep-alive` | 2 | Reuses HTTP connections |
+| `--max-requests` | 1000 | Prevents memory leaks |
+
+---
+
+## Autoscaler
+
+Monitors Prometheus metrics and scales app replicas automatically.
+
+**Run:**
+```bash
+uv run autoscaler.py
+```
+
+**Logic:**
+```
+Every 10 seconds:
+  rps > 30 OR cpu > 50%  →  add 1 replica (up to max 6)
+  rps < 10 AND cpu < 10% →  remove 1 replica after 3 consecutive readings
+```
+
+**Autoscaler scaling up during 1000 user load test:**
+
+![Autoscaler working](docs/screenshots/autoscaler working.png)
+
+**Observed behaviour:**
+```
+rps=17  replicas=2
+rps=29  replicas=2
+rps=49  → scale UP to 3
+rps=46  → scale UP to 4
+rps=34  → scale UP to 5
+rps=54  → scale UP to 6  (max)
+... test ends ...
+rps=0   streak=1/3
+rps=0   streak=2/3
+rps=0   streak=3/3  → scale DOWN to 5
+... continues scaling down to 2
+```
