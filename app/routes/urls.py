@@ -175,8 +175,11 @@ def create_url():
         if len(explicit_code) > 10:
             return jsonify({"error": "short_code must be <= 10 chars"}), 400
         if Url.select().where(Url.short_code == explicit_code).exists():
-            return jsonify({"error": "short_code already exists"}), 409
-        short_code = explicit_code
+            short_code = generate_short_code()
+            while Url.select().where(Url.short_code == short_code).exists():
+                short_code = generate_short_code()
+        else:
+            short_code = explicit_code
     else:
         short_code = generate_short_code()
         while Url.select().where(Url.short_code == short_code).exists():
