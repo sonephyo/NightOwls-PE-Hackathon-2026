@@ -1,142 +1,113 @@
-# MLH PE Hackathon — URL Shortener
+# URL Shortener — MLH PE Hackathon 2026
 
-A Flask app that shortens URLs, with a full monitoring stack (Prometheus, Loki, Grafana) included.
+A production-style URL shortener backend built for the MLH Production Engineering Hackathon. No frontend — pure backend service with a focus on reliability, observability, and documentation.
+
+**Stack:** Flask · Peewee ORM · PostgreSQL · uv
 
 ---
 
 ## Prerequisites
 
-**1. Docker Desktop** — download from https://www.docker.com/products/docker-desktop and install it. Make sure it's open and running before you continue (look for the whale icon in your menu bar).
+- **uv** — Python package manager (handles versions, virtualenvs, dependencies)
 
-**2. uv** (Python package manager)
+  ```bash
+  # macOS / Linux
+  curl -LsSf https://astral.sh/uv/install.sh | sh
 
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
+  # Windows (PowerShell)
+  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+  ```
 
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-After installing, close and reopen your terminal.
+- **PostgreSQL** running locally (Docker or local install both work)
 
 ---
 
-## Running the App
+## Quick Start
 
 ```bash
-# 1. Clone and enter the project
+# 1. Clone the repo
 git clone <repo-url>
-cd PE-Hackathon-Template-2026
+cd <repo-name>
 
-# 2. Install Python dependencies
+# 2. Install dependencies
 uv sync
 
-# 3. Start everything
-docker compose up --build
-```
+# 3. Create the database
+createdb hackathon_db
 
-The first run downloads Docker images — this takes a minute. Leave the terminal running.
+# 4. Configure environment
+cp .env.example .env
+# Edit .env if your DB credentials differ from the defaults
 
-**Verify it's working** — open a new terminal:
+# 5. Load seed data
+# Download seed files from https://mlh-pe-hackathon.com and follow platform instructions
 
-```bash
-curl http://localhost:8000/health
-# → {"status": "ok"}
-```
+# 6. Run the server
+uv run run.py
 
----
-
-## Stopping
-
-```bash
-# Ctrl+C in the Docker terminal, then:
-docker compose down
+# 7. Verify it's running
+curl http://localhost:5000/health
+# → {"status":"ok"}
 ```
 
 ---
 
-## Service URLs
+## Project Structure
 
-| Service | URL | Login |
+```
+.
+├── app/
+│   ├── __init__.py          # App factory (create_app)
+│   ├── database.py          # DB connection, BaseModel, teardown hooks
+│   ├── models/
+│   │   └── __init__.py      # Register models here
+│   └── routes/
+│       └── __init__.py      # Register blueprints here
+├── .env.example             # Environment variable template
+├── .gitignore
+├── .python-version          # Python version pin for uv
+├── pyproject.toml           # Project metadata and dependencies
+├── run.py                   # Entry point — use `uv run run.py`
+└── README.md
+```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and update as needed:
+
+| Variable | Default | Description |
 |---|---|---|
-| App | http://localhost:8000 | — |
-| Grafana (logs & metrics) | http://localhost:3000 | admin / admin |
-| Prometheus | http://localhost:9090 | — |
+| `DATABASE_URL` | `postgresql://localhost/hackathon_db` | PostgreSQL connection string |
 
 ---
 
-## Viewing Logs in Grafana
+## API Endpoints
 
-1. Open http://localhost:3000 → **Explore**
-2. Select **Loki** from the dropdown
-3. Query: `{service="app"}` → press **Run query**
+> Full API documentation coming in Silver tier. Below are the currently implemented endpoints.
 
-Filter to warnings only: `{service="app"} | json | level="warning"`
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check — returns `{"status":"ok"}` |
 
----
-
-## Viewing Metrics in Grafana
-
-1. Open http://localhost:3000 → **Explore**
-2. Select **Prometheus**
-3. Example query: `rate(app_urls_created_total[1m])`
+_More endpoints will be documented as the team builds them out._
 
 ---
 
-## Troubleshooting
+## Team
 
-**Docker won't start** — make sure Docker Desktop is open. Look for the whale icon in your menu bar.
-
-**`uv` command not found** — close and reopen your terminal after installing. If it still fails, restart your computer.
-
-**"Connection refused" on localhost:8000** — the app is still starting. Wait 10 seconds and try again.
-
-**Port already in use** — run `docker compose down`, then try again.
-
-**Code changes not showing** — rebuild with `docker compose up --build` (not just `up`).
+| Name | Track |
+|---|---|
+| Aaron | Reliability |
+| _(teammate)_ | Observability |
+| Cameron | Documentation |
 
 ---
 
-## For Developers Adding Features
+## Hackathon
 
-See the [Observability Guide](#observability-guide) below for how to add logs and metrics to your routes.
-
-### Adding Logs
-
-Add this at the top of every route file:
-
-```python
-import structlog
-log = structlog.get_logger(__name__)
-```
-
-Then call it in your handlers:
-
-```python
-log.info("url.shortened", short_code="abc123", user_id=1)
-log.warning("url.not_found", short_code="abc123")
-log.error("db.write_failed", exc_info=True)
-```
-
-### Incrementing Metrics Counters
-
-```python
-from app.routes.metrics import urls_created_total, redirects_total
-
-urls_created_total.inc()  # after a URL is successfully created
-redirects_total.inc()     # after a redirect is served
-```
-
-### Registering a New Blueprint
-
-Open `app/routes/__init__.py` and add your blueprint:
-
-```python
-def register_routes(app):
-    from app.routes.metrics import metrics_bp
-    app.register_blueprint(metrics_bp)
-
-    from app.routes.urls import urls_bp  # your new blueprint
-    app.register_blueprint(urls_bp)
-```
+- **Event:** MLH Production Engineering Hackathon 2026
+- **Dates:** April 3–5, 2026
+- **Track:** Documentation
+- **Template:** [MLH-Fellowship/PE-Hackathon-Template-2026](https://github.com/MLH-Fellowship/PE-Hackathon-Template-2026)
