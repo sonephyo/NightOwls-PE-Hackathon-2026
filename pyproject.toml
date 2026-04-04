@@ -17,4 +17,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=7.1.0",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=95"
+
+[tool.coverage.run]
+omit = ["tests/*"]
