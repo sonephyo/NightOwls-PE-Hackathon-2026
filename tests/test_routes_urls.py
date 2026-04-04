@@ -204,6 +204,15 @@ class TestCreateUrl:
         assert resp2.status_code == 201
         assert resp1.get_json()["short_code"] != resp2.get_json()["short_code"]
 
+    def test_same_original_url_still_gets_unique_short_codes(self, client, sample_user):
+        uid = sample_user["id"]
+        payload = {"original_url": "https://same.com/path", "user_id": uid}
+        resp1 = client.post("/urls", json=payload)
+        resp2 = client.post("/urls", json=payload)
+        assert resp1.status_code == 201
+        assert resp2.status_code == 201
+        assert resp1.get_json()["short_code"] != resp2.get_json()["short_code"]
+
     def test_returns_400_when_url_is_not_http(self, client, sample_user):
         resp = client.post("/urls", json={"original_url": "ftp://bad.com", "user_id": sample_user["id"]})
         assert resp.status_code == 400
