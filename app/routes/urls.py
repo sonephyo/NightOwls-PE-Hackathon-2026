@@ -68,12 +68,7 @@ def list_urls():
     order     = request.args.get('order', 'asc')
 
     query = Url.select()
-    raw_user_id = request.args.get('user_id')
-    if raw_user_id is not None:
-        try:
-            user_id = int(raw_user_id)
-        except (TypeError, ValueError):
-            return jsonify({"error": "user_id must be an integer"}), 400
+    if user_id := request.args.get('user_id', type=int):
         query = query.where(Url.user_id == user_id)
     if (is_active := request.args.get('is_active')) is not None:
         query = query.where(Url.is_active == (is_active.lower() == 'true'))

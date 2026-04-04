@@ -37,15 +37,15 @@ class TestListUrls:
         # list endpoint uses recurse=False so user_id is returned as a plain integer
         assert all(u["user_id"] == sample_user["id"] for u in results)
 
-    def test_returns_400_for_non_integer_user_id_filter(self, client):
+    def test_ignores_non_integer_user_id_filter(self, client):
         resp = client.get("/urls?user_id=abc")
-        assert resp.status_code == 400
-        assert "error" in resp.get_json()
+        assert resp.status_code == 200
+        assert isinstance(resp.get_json(), list)
 
-    def test_returns_400_for_float_like_user_id_filter(self, client):
+    def test_ignores_float_like_user_id_filter(self, client):
         resp = client.get("/urls?user_id=1.5")
-        assert resp.status_code == 400
-        assert "error" in resp.get_json()
+        assert resp.status_code == 200
+        assert isinstance(resp.get_json(), list)
 
     def test_filters_by_is_active_true(self, client, sample_user):
         client.post("/urls", json={"original_url": "https://active.com", "is_active": True, "user_id": sample_user["id"]})
