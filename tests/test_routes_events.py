@@ -177,6 +177,45 @@ class TestCreateEvent:
         assert resp.status_code == 201
         assert resp.get_json().get("timestamp") is not None
 
+    def test_returns_400_when_details_is_string(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "click",
+                "details": "not a dict",
+            },
+        )
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_returns_400_when_details_is_integer(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "click",
+                "details": 42,
+            },
+        )
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_accepts_details_as_dict(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "click",
+                "details": {"key": "value"},
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["details"] == {"key": "value"}
+
     def test_created_event_is_retrievable(self, client, sample_user, sample_url):
         resp = client.post(
             "/events",

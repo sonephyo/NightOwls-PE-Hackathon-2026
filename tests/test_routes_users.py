@@ -108,6 +108,15 @@ class TestCreateUser:
         resp = client.post("/users", data="notjson", content_type="text/plain")
         assert resp.status_code in (400, 415)
 
+    def test_returns_400_when_email_has_no_at_sign(self, client):
+        resp = client.post("/users", json={"username": "bob", "email": "notanemail"})
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_accepts_valid_email(self, client):
+        resp = client.post("/users", json={"username": "bob", "email": "bob@example.com"})
+        assert resp.status_code == 201
+
 
 # ---------------------------------------------------------------------------
 # PUT /users/<id>

@@ -31,6 +31,8 @@ def create_user():
     
     if not data or not isinstance(data.get('username'), str) or not isinstance(data.get('email'), str):
         return jsonify({"error": "Invalid data"}), 400
+    if '@' not in data['email']:
+        return jsonify({"error": "Invalid email"}), 400
     
     try:
         user = User.create(

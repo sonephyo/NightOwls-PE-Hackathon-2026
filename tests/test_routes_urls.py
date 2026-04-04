@@ -187,13 +187,32 @@ class TestCreateUrl:
         assert resp.status_code == 201
         assert resp.get_json()["short_code"] == "custom"
 
-    def test_auto_generates_unique_short_code_on_collision(self, client, sample_user):
-        """When the given short_code already exists, a new one is generated."""
+    def test_returns_409_when_explicit_short_code_already_exists(self, client, sample_user):
+        """When the given short_code already exists, return 409 Conflict."""
         uid = sample_user["id"]
         client.post("/urls", json={"original_url": "https://a.com", "short_code": "dup123", "user_id": uid})
         resp = client.post("/urls", json={"original_url": "https://b.com", "short_code": "dup123", "user_id": uid})
-        assert resp.status_code == 201
-        assert resp.get_json()["short_code"] != "dup123"
+        assert resp.status_code == 409
+        assert "error" in resp.get_json()
+
+    def test_auto_generates_unique_short_code_when_no_code_given(self, client, sample_user):
+        """Without explicit short_code, auto-generation always produces a unique code."""
+        uid = sample_user["id"]
+        resp1 = client.post("/urls", json={"original_url": "https://a.com", "user_id": uid})
+        resp2 = client.post("/urls", json={"original_url": "https://b.com", "user_id": uid})
+        assert resp1.status_code == 201
+        assert resp2.status_code == 201
+        assert resp1.get_json()["short_code"] != resp2.get_json()["short_code"]
+
+    def test_returns_400_when_url_is_not_http(self, client, sample_user):
+        resp = client.post("/urls", json={"original_url": "ftp://bad.com", "user_id": sample_user["id"]})
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_returns_400_when_url_has_no_scheme(self, client, sample_user):
+        resp = client.post("/urls", json={"original_url": "example.com", "user_id": sample_user["id"]})
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
 
     def test_create_response_includes_click_count(self, client, sample_user):
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": sample_user["id"]})

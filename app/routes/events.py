@@ -68,6 +68,8 @@ def create_event():
         return jsonify({"error": "url_id required"}), 400
     if not data.get('event_type'):
         return jsonify({"error": "event_type required"}), 400
+    if data.get('details') is not None and not isinstance(data['details'], dict):
+        return jsonify({"error": "details must be an object"}), 400
     try:
         event = Event.create(
             url_id=data['url_id'],

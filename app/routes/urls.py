@@ -113,9 +113,17 @@ def create_url():
     data = request.get_json()
     if not data or not data.get('original_url'):
         return jsonify({"error": "original_url required"}), 400
-    short_code = data.get('short_code') or generate_short_code()
-    while Url.select().where(Url.short_code == short_code).exists():
+    original_url = data['original_url']
+    if not (original_url.startswith('http://') or original_url.startswith('https://')):
+        return jsonify({"error": "original_url must be a valid URL"}), 400
+    if explicit_code := data.get('short_code'):
+        if Url.select().where(Url.short_code == explicit_code).exists():
+            return jsonify({"error": "short_code already exists"}), 409
+        short_code = explicit_code
+    else:
         short_code = generate_short_code()
+        while Url.select().where(Url.short_code == short_code).exists():
+            short_code = generate_short_code()
     url = Url.create(
         user_id=data.get('user_id'),
         short_code=short_code,
