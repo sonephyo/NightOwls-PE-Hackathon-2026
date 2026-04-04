@@ -74,6 +74,72 @@
       ]
     },
     {
+      "id": 8,
+      "title": "Latency p95 (now)",
+      "description": "Current 95th percentile request latency. Green < 100ms, yellow < 500ms, red above.",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 3, "w": 6, "h": 8 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 500 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p95 latency"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Error Rate % (now)",
+      "description": "Current percentage of requests returning 5xx errors over a 1-minute window.",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 3, "w": 6, "h": 8 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 * sum(rate(http_requests_total{http_status=~\"5..\"}[1m])) / sum(rate(http_requests_total[1m]))",
+          "legendFormat": "5xx %"
+        }
+      ]
+    },
+    {
       "id": 3,
       "title": "CPU Usage Over Time — 2s resolution",
       "description": "Historical view of system CPU usage. Each data point represents a 2-second sample. Use this to spot spikes during high traffic or heavy operations.",
@@ -112,6 +178,90 @@
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "app_ram_usage_mb",
           "legendFormat": "RAM MB"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Traffic — Requests/sec by Endpoint",
+      "description": "Rate of incoming HTTP requests per second for production endpoints. Internal endpoints (/metrics, /stress, /test-error) are excluded.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(http_requests_total{endpoint!~\"/test-error|/stress|/metrics\"}[1m])) by (endpoint)",
+          "legendFormat": "{{endpoint}}",
+          "interval": "5s"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Error Rate — 5xx %",
+      "description": "Percentage of requests returning HTTP 5xx errors over a 1-minute window. Above 1% warrants investigation; above 10% triggers the HighErrorRate alert.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 * sum(rate(http_requests_total{http_status=~\"5..\"}[1m])) / sum(rate(http_requests_total[1m]))",
+          "legendFormat": "5xx %",
+          "interval": "5s"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Latency — p50 / p95 / p99",
+      "description": "Request duration percentiles over a 1-minute window. p95 > 500ms is a warning signal; p95 > 1s needs immediate attention.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 29, "w": 24, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p50",
+          "interval": "5s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p95",
+          "interval": "5s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p99",
+          "interval": "5s"
         }
       ]
     }

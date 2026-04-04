@@ -104,6 +104,7 @@ services:
       - "9093:9093"
     environment:
       - PAGERDUTY_ROUTING_KEY=${PAGERDUTY_ROUTING_KEY}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ./monitoring/alertmanager/docker-entrypoint.sh:/docker-entrypoint.sh:ro
