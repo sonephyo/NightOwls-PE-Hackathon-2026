@@ -27,9 +27,9 @@ def get_user(id):
 
 @users_bp.route("/users", methods=["POST"])
 def create_user():
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
-    if not data or not isinstance(data.get('username'), str) or not isinstance(data.get('email'), str):
+    if not isinstance(data, dict) or not isinstance(data.get('username'), str) or not isinstance(data.get('email'), str):
         return jsonify({"error": "Invalid data"}), 400
     if '@' not in data['email']:
         return jsonify({"error": "Invalid email"}), 400

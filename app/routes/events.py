@@ -63,8 +63,8 @@ def get_event(id):
 
 @events_bp.route("/events", methods=["POST"])
 def create_event():
-    data = request.get_json()
-    if not data:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
         return jsonify({"error": "Invalid data"}), 400
     if not data.get('url_id'):
         return jsonify({"error": "url_id required"}), 400

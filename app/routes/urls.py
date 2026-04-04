@@ -1,6 +1,5 @@
 import csv
 import io
-import json
 import random
 import string
 from datetime import datetime
@@ -91,8 +90,7 @@ def top_urls():
         .order_by(fn.COUNT(Event.id).desc())
         .limit(n)
     )
-    out = [{**model_to_dict(u, recurse=False), 'click_count': getattr(u, 'click_count', 0)} for u in results]
-    return jsonify(out)
+    return jsonify([url_to_dict(u) for u in results])
 
 
 @urls_bp.route("/urls/<int:id>/stats", methods=["GET"])
@@ -270,11 +268,7 @@ def redirect_url(short_code):
                 user_id=event_user_id,
                 event_type="click",
                 timestamp=datetime.now(),
-                details=json.dumps({
-                    "ip": request.remote_addr,
-                    "referrer": request.referrer,
-                    "user_agent": request.user_agent.string,
-                }),
+                details=None,
             )
             redirects_total.inc()
         return redirect(url.original_url, code=302)
