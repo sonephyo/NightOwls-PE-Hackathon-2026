@@ -31,6 +31,10 @@ def generate_short_code(length=6):
 
 def url_to_dict(url):
     d = model_to_dict(url, recurse=False)
+    if d.get('created_at') is not None:
+        d['created_at'] = d['created_at'].isoformat()
+    if d.get('updated_at') is not None:
+        d['updated_at'] = d['updated_at'].isoformat()
     d['click_count'] = Event.select().where(
         (Event.url_id == url.id) & (Event.event_type == 'click')
     ).count()
