@@ -66,10 +66,14 @@ def create_event():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid data"}), 400
-    if not data.get('url_id'):
+    if data.get('url_id') is None:
         return jsonify({"error": "url_id required"}), 400
-    if not data.get('event_type'):
+    if not isinstance(data.get('url_id'), int) or isinstance(data.get('url_id'), bool):
+        return jsonify({"error": "url_id must be an integer"}), 400
+    if not data.get('event_type') or not isinstance(data.get('event_type'), str):
         return jsonify({"error": "event_type required"}), 400
+    if data.get('user_id') is not None and (not isinstance(data.get('user_id'), int) or isinstance(data.get('user_id'), bool)):
+        return jsonify({"error": "user_id must be an integer"}), 400
     if data.get('details') is not None and not isinstance(data['details'], dict):
         return jsonify({"error": "details must be an object"}), 400
     try:
