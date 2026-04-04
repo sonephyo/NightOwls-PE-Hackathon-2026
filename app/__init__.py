@@ -37,6 +37,22 @@ def create_app():
         log.error("unhandled_exception", exc_info=True)
         return jsonify(error="internal server error"), 500
 
+    from app.routes.metrics import http_requests_total
+
+    @app.after_request
+    def record_request_metrics(response):
+        endpoint = str(request.url_rule) if request.url_rule else "unknown"
+        http_requests_total.labels(
+            method=request.method,
+            endpoint=endpoint,
+            http_status=str(response.status_code),
+        ).inc()
+        return response
+
+    @app.route("/test-error")
+    def test_error():
+        return jsonify(error="simulated server error"), 500
+
     return app
 
 

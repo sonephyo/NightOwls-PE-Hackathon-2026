@@ -1,9 +1,17 @@
-# Placeholder — Silver tier will configure real receivers (Slack/Discord/Email).
 global:
   resolve_timeout: 5m
 
 route:
-  receiver: "null"
+  receiver: pagerduty-alerts
+  group_by: [alertname, severity]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 1h
 
 receivers:
-  - name: "null"
+  - name: pagerduty-alerts
+    pagerduty_configs:
+      - routing_key: "${PAGERDUTY_ROUTING_KEY}"
+        send_resolved: true
+        description: '{{ .CommonAnnotations.summary }}'
+        severity: '{{ .CommonLabels.severity }}'
