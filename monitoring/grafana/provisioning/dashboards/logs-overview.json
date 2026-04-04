@@ -9,18 +9,36 @@
       "id": 0,
       "title": "",
       "type": "text",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 2 },
       "options": {
         "mode": "markdown",
-        "content": "## MLH PE Hack — Application Logs\nServices: `nightowls-app-1` · `nightowls-db-1` · `nightowls-alertmanager-1`"
+        "content": "## MLH PE Hack — Application Logs\nStructured JSON logs from all containers. Errors surface at the top."
       }
+    },
+    {
+      "id": 5,
+      "title": "Log Volume by Level — Over Time",
+      "description": "Rate of log lines per level. A sudden silence means the app stopped logging — possible crash. A spike in 'error' lines means something is wrong.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 2, "w": 24, "h": 7 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "min": 0 }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({service_name=\"nightowls-app-1\"} | json [1m])) by (level)",
+          "legendFormat": "{{level}}",
+          "queryType": "range"
+        }
+      ]
     },
     {
       "id": 1,
       "title": "Errors & Warnings — Needs Attention",
-      "description": "Only ERROR and WARNING level logs. If this panel has entries, something needs attention.",
+      "description": "Only ERROR and WARNING level logs. If this panel has entries, something needs attention. Use timestamps to correlate with metric spikes above.",
       "type": "logs",
-      "gridPos": { "x": 0, "y": 3, "w": 24, "h": 10 },
+      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 10 },
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -42,9 +60,9 @@
     {
       "id": 2,
       "title": "App Logs — All (Live Stream)",
-      "description": "All structured logs from the Flask app. Newest first. Click any line to expand full JSON details.",
+      "description": "All structured logs from the Flask app. Newest first. Click any line to expand full JSON.",
       "type": "logs",
-      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 12 },
+      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 10 },
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -68,7 +86,7 @@
       "title": "Database Logs",
       "description": "PostgreSQL container logs.",
       "type": "logs",
-      "gridPos": { "x": 0, "y": 25, "w": 12, "h": 10 },
+      "gridPos": { "x": 0, "y": 29, "w": 12, "h": 10 },
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -90,9 +108,9 @@
     {
       "id": 4,
       "title": "Alertmanager Logs",
-      "description": "Alertmanager container logs — shows when alerts fire and are routed.",
+      "description": "Shows when alerts fire, are resolved, and are routed to receivers.",
       "type": "logs",
-      "gridPos": { "x": 12, "y": 25, "w": 12, "h": 10 },
+      "gridPos": { "x": 12, "y": 29, "w": 12, "h": 10 },
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,

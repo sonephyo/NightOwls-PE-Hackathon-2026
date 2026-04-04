@@ -5,6 +5,16 @@ title: Runbooks
 
 # Runbooks
 
+> At 3 AM you are not functioning. This document is.
+
+## Quick Links
+| Tool | URL |
+|------|-----|
+| Grafana — Metrics Dashboard | http://localhost:3000/d/app-overview |
+| Grafana — Logs Dashboard | http://localhost:3000/d/logs-overview |
+| Prometheus Alerts | http://localhost:9090/alerts |
+| Alertmanager | http://localhost:9093 |
+
 Two alerts are configured in Prometheus. This document tells you exactly what to do when each fires.
 
 ---
@@ -112,7 +122,7 @@ This shows you which route is throwing errors. Cross-reference with Loki:
 In Grafana (`http://localhost:3000`), query:
 
 ```
-{service="app"} | json | level="error"
+{service_name="nightowls-app-1"} | json | level="error"
 ```
 
 Look for `event` field values — the structured logger names the operation (e.g., `unhandled_exception`, `db.connection_error`).
@@ -161,7 +171,7 @@ docker compose up --build -d app
 `POST /users/bulk` and `POST /urls/bulk` wrap inserts in `db.atomic()`. If a row fails validation mid-batch, the entire batch rolls back and returns 500. Check logs for the failing row:
 
 ```
-{service="app"} | json | event="bulk_insert_error"
+{service_name="nightowls-app-1"} | json | event="bulk_insert_error"
 ```
 
 Fix the CSV (bad row IDs, missing required fields, duplicate emails) and retry the request.
@@ -171,7 +181,7 @@ Fix the CSV (bad row IDs, missing required fields, duplicate emails) and retry t
 `GET /stress` burns CPU for ~3 seconds. If called repeatedly, it can cause gunicorn workers to queue up and timeout, producing 500s. Check:
 
 ```
-{service="app"} | json | event="stress_complete"
+{service_name="nightowls-app-1"} | json | event="stress_complete"
 ```
 
 If this is the cause, the errors will self-resolve once the load stops. No action needed unless this is being called maliciously.
@@ -185,6 +195,37 @@ sum(rate(http_requests_total{http_status=~"5.."}[2m])) / sum(rate(http_requests_
 ```
 
 Should return a value below `0.10` or `no data` (if traffic has stopped).
+
+---
+
+---
+
+## Sherlock Mode: Root Cause Diagnosis Demo
+
+**Scenario:** Error Rate stat turns red. Users report slowness and 500 errors.
+
+**Step 1 — Metrics dashboard top row**
+- App Status: green → app is up, not crashed
+- Error Rate %: red → errors are happening
+- Latency p95: elevated → requests are slow
+
+**Step 2 — Traffic & Errors row**
+- Traffic panel: requests still flowing to endpoints → app is responding, just badly
+- Error Rate timeseries: spike started at a specific timestamp — note it
+
+**Step 3 — Saturation row**
+- CPU timeseries: repeated spikes every ~5 seconds correlating exactly with the error spike
+- Latency spikes match CPU spikes → CPU contention is causing timeouts
+
+**Step 4 — Switch to Logs dashboard**
+- Log Volume chart: error-level lines spike at the same time as the CPU
+- Errors & Warnings panel: `"event": "simulated_error", "endpoint": "/test-error"` flood starting at the noted timestamp
+- All Logs panel: high volume of requests to `/test-error` and `/stress`
+
+**Root cause:**
+> A client began hammering `/stress` (CPU spike) and `/test-error` simultaneously at the noted time. The CPU saturation caused all other requests to slow down and timeout, producing the error spike. The log stream confirms the exact start time and endpoints involved.
+
+**Resolution:** Rate-limit or remove `/stress` and `/test-error` from production builds.
 
 ---
 
