@@ -24,6 +24,9 @@ _SORT_FIELDS = {
     'original_url': Url.original_url,
 }
 
+_CREATE_FIELDS = {'user_id', 'original_url', 'title', 'short_code', 'is_active'}
+_UPDATE_FIELDS = {'original_url', 'title', 'is_active'}
+
 
 def generate_short_code(length=6):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -118,13 +121,16 @@ def create_url():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid data"}), 400
+    unknown_fields = set(data.keys()) - _CREATE_FIELDS
+    if unknown_fields:
+        return jsonify({"error": "Invalid data"}), 400
     if not data.get('original_url'):
         return jsonify({"error": "original_url required"}), 400
 
     user_id = data.get('user_id')
     if user_id is None:
         return jsonify({"error": "user_id required"}), 400
-    if not isinstance(user_id, int):
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
         return jsonify({"error": "user_id must be an integer"}), 400
     if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == user_id).exists():
         return jsonify({"error": "invalid user_id"}), 400
@@ -142,11 +148,13 @@ def create_url():
             return jsonify({"error": "short_code must be a non-empty string"}), 400
         if len(explicit_code) > 10:
             return jsonify({"error": "short_code must be <= 10 chars"}), 400
-        # TEMP DEBUG: allow explicit duplicates to isolate hidden test behavior.
+        if Url.select().where(Url.short_code == explicit_code).exists():
+            return jsonify({"error": "short_code already exists"}), 409
         short_code = explicit_code
     else:
         short_code = generate_short_code()
-        # TEMP DEBUG: skip collision retry to isolate Twin's Paradox behavior.
+        while Url.select().where(Url.short_code == short_code).exists():
+            short_code = generate_short_code()
     try:
         url = Url.create(
             user_id=user_id,
@@ -170,6 +178,11 @@ def update_url(id):
         return err
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
+        return jsonify({"error": "Invalid data"}), 400
+    unknown_fields = set(data.keys()) - _UPDATE_FIELDS
+    if unknown_fields:
+        return jsonify({"error": "Invalid data"}), 400
+    if not any(field in data for field in _UPDATE_FIELDS):
         return jsonify({"error": "Invalid data"}), 400
     if 'original_url' in data:
         if not isinstance(data['original_url'], str) or not (data['original_url'].startswith('http://') or data['original_url'].startswith('https://')):
@@ -229,7 +242,26 @@ def redirect_url(short_code):
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
-        # TEMP DEBUG: disable click tracking to isolate hidden test behavior for hint #2.
+
+        raw_user_id = request.args.get('user_id')
+        event_user_id = None
+        if raw_user_id is not None:
+            try:
+                event_user_id = int(raw_user_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "user_id must be an integer"}), 400
+            if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
+                return jsonify({"error": "invalid user_id"}), 400
+
+        with db.atomic():
+            Event.create(
+                url_id=url.id,
+                user_id=event_user_id,
+                event_type="click",
+                timestamp=datetime.now(),
+                details=None,
+            )
+            redirects_total.inc()
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
         log.warning("redirect.not_found", short_code=short_code)

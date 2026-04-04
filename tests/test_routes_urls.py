@@ -254,6 +254,10 @@ class TestCreateUrl:
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": "1"})
         assert resp.status_code == 400
 
+    def test_returns_400_when_user_id_is_boolean(self, client):
+        resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": True})
+        assert resp.status_code == 400
+
     def test_returns_400_when_user_does_not_exist(self, client):
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": 999999})
         assert resp.status_code == 400
@@ -326,9 +330,9 @@ class TestUpdateUrl:
         resp = client.put(f"/urls/{sample_url['id']}", json="nope")
         assert resp.status_code == 400
 
-    def test_ignores_unknown_fields_and_returns_200(self, client, sample_url):
+    def test_rejects_unknown_fields_with_400(self, client, sample_url):
         resp = client.put(f"/urls/{sample_url['id']}", json={"foo": "bar"})
-        assert resp.status_code == 200
+        assert resp.status_code == 400
 
     def test_update_response_includes_click_count(self, client, sample_url):
         resp = client.put(f"/urls/{sample_url['id']}", json={"title": "new"})
