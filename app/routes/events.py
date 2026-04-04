@@ -10,55 +10,54 @@ from app.models import Event
 
 events_bp = Blueprint("events", __name__)
 
+
 def event_to_dict(e):
     d = model_to_dict(e, recurse=False)
-    if d.get('details') and isinstance(d['details'], str):
+    if isinstance(d.get('details'), str):
         try:
             d['details'] = json.loads(d['details'])
         except (json.JSONDecodeError, TypeError):
             pass
     return d
 
+
+def _apply_filters(query):
+    if url_id := request.args.get('url_id', type=int):
+        query = query.where(Event.url_id == url_id)
+    if user_id := request.args.get('user_id', type=int):
+        query = query.where(Event.user_id == user_id)
+    if event_type := request.args.get('event_type'):
+        query = query.where(Event.event_type == event_type)
+    return query
+
+
 @events_bp.route("/events", methods=["GET"])
 def list_events():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    url_id = request.args.get('url_id', type=int)
-    user_id = request.args.get('user_id', type=int)
-    event_type = request.args.get('event_type')
-    query = Event.select()
-    if url_id:
-        query = query.where(Event.url_id == url_id)
-    if user_id:
-        query = query.where(Event.user_id == user_id)
-    if event_type:
-        query = query.where(Event.event_type == event_type)
-    events = query.paginate(page, per_page)
-    return jsonify([event_to_dict(e) for e in events])
+    query = _apply_filters(Event.select())
+    return jsonify([event_to_dict(e) for e in query.paginate(page, per_page)])
+
 
 @events_bp.route("/events/summary", methods=["GET"])
 def events_summary():
-    url_id = request.args.get('url_id', type=int)
-    query = Event.select()
-    if url_id:
-        query = query.where(Event.url_id == url_id)
-
+    query = _apply_filters(Event.select())
     rows = (
         query.select(Event.event_type, fn.COUNT(Event.id).alias('count'))
         .group_by(Event.event_type)
         .tuples()
     )
     by_type = {row[0]: row[1] for row in rows}
-    total = sum(by_type.values())
-    return jsonify({"total": total, "by_type": by_type})
+    return jsonify({"total": sum(by_type.values()), "by_type": by_type})
+
 
 @events_bp.route("/events/<int:id>", methods=["GET"])
 def get_event(id):
     try:
-        event = Event.get_by_id(id)
-        return jsonify(event_to_dict(event))
+        return jsonify(event_to_dict(Event.get_by_id(id)))
     except Event.DoesNotExist:
         return jsonify({"error": "Event not found"}), 404
+
 
 @events_bp.route("/events", methods=["POST"])
 def create_event():
@@ -71,34 +70,34 @@ def create_event():
         return jsonify({"error": "event_type required"}), 400
     try:
         event = Event.create(
-            url_id=data.get('url_id'),
+            url_id=data['url_id'],
             user_id=data.get('user_id'),
-            event_type=data.get('event_type'),
+            event_type=data['event_type'],
             timestamp=datetime.now(),
-            details=json.dumps(data.get('details')) if data.get('details') is not None else None
+            details=json.dumps(data['details']) if data.get('details') is not None else None,
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     return jsonify(event_to_dict(event)), 201
 
+
 @events_bp.route("/events/bulk", methods=["POST"])
 def bulk_upload_events():
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
-    file = request.files['file']
-    content = file.read().decode('utf-8')
-    reader = csv.DictReader(io.StringIO(content))
-    rows = []
-    for row in reader:
-        rows.append({
-            'id': int(row['id']),
-            'url_id': int(row['url_id']),
-            'user_id': int(row['user_id']),
-            'event_type': row['event_type'],
-            'timestamp': row['timestamp'],
-            'details': row['details']
-        })
+    reader = csv.DictReader(io.StringIO(request.files['file'].read().decode('utf-8')))
+    rows = [
+        {
+            'id': int(r['id']),
+            'url_id': int(r['url_id']),
+            'user_id': int(r['user_id']),
+            'event_type': r['event_type'],
+            'timestamp': r['timestamp'],
+            'details': r['details'],
+        }
+        for r in reader
+    ]
     with db.atomic():
-        for batch in chunked(rows, 100):
+        for batch in chunked(rows, 1000):
             Event.insert_many(batch).execute()
     return jsonify({"count": len(rows)}), 201

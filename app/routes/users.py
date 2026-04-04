@@ -63,12 +63,10 @@ def update_user(id):
 
 @users_bp.route("/users/<int:id>", methods=["DELETE"])
 def delete_user(id):
-    try:
-        user = User.get_by_id(id)
-        user.delete_instance()
-        return jsonify({"message": "Deleted"}), 200
-    except User.DoesNotExist:
+    deleted = User.delete().where(User.id == id).execute()
+    if not deleted:
         return jsonify({"error": "User not found"}), 404
+    return jsonify({"message": "Deleted"}), 200
 
 @users_bp.route("/users/bulk", methods=["POST"])
 def bulk_upload_users():
@@ -89,7 +87,7 @@ def bulk_upload_users():
         })
     
     with db.atomic():
-        for batch in chunked(rows, 100):
+        for batch in chunked(rows, 1000):
             User.insert_many(batch).execute()
 
     try:

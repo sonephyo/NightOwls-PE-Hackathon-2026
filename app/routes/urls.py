@@ -13,19 +13,7 @@ from app.models.event import Event
 from app.routes.metrics import urls_created_total, redirects_total
 
 log = structlog.get_logger(__name__)
-
 urls_bp = Blueprint("urls", __name__)
-
-def generate_short_code(length=6):
-    chars = string.ascii_letters + string.digits
-    return ''.join(random.choices(chars, k=length))
-
-def url_to_dict(url):
-    d = model_to_dict(url, recurse=False)
-    d['click_count'] = Event.select().where(
-        (Event.url_id == url.id) & (Event.event_type == 'click')
-    ).count()
-    return d
 
 _SORT_FIELDS = {
     'id': Url.id,
@@ -35,37 +23,90 @@ _SORT_FIELDS = {
     'original_url': Url.original_url,
 }
 
+
+def generate_short_code(length=6):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
+def url_to_dict(url):
+    d = model_to_dict(url, recurse=False)
+    d['click_count'] = Event.select().where(
+        (Event.url_id == url.id) & (Event.event_type == 'click')
+    ).count()
+    return d
+
+
+def _get_url_or_404(id):
+    try:
+        return Url.get_by_id(id), None
+    except Url.DoesNotExist:
+        return None, (jsonify({"error": "URL not found"}), 404)
+
+
 @urls_bp.route("/urls", methods=["GET"])
 def list_urls():
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    user_id = request.args.get('user_id', type=int)
-    is_active = request.args.get('is_active')
-    short_code = request.args.get('short_code')
-    sort_by = request.args.get('sort_by', 'id')
-    order = request.args.get('order', 'asc')
+    page      = request.args.get('page', 1, type=int)
+    per_page  = request.args.get('per_page', 50, type=int)
+    sort_by   = request.args.get('sort_by', 'id')
+    order     = request.args.get('order', 'asc')
 
     query = Url.select()
-    if user_id:
+    if user_id := request.args.get('user_id', type=int):
         query = query.where(Url.user_id == user_id)
-    if is_active is not None:
+    if (is_active := request.args.get('is_active')) is not None:
         query = query.where(Url.is_active == (is_active.lower() == 'true'))
-    if short_code:
+    if short_code := request.args.get('short_code'):
         query = query.where(Url.short_code == short_code)
 
     sort_field = _SORT_FIELDS.get(sort_by, Url.id)
     query = query.order_by(sort_field.desc() if order == 'desc' else sort_field.asc())
+    return jsonify([url_to_dict(u) for u in query.paginate(page, per_page)])
 
-    urls = query.paginate(page, per_page)
-    return jsonify([url_to_dict(u) for u in urls])
+
+@urls_bp.route("/urls/top", methods=["GET"])
+def top_urls():
+    n = request.args.get('n', 10, type=int)
+    results = (
+        Url.select(Url, fn.COUNT(Event.id).alias('click_count'))
+        .join(Event, JOIN.LEFT_OUTER, on=(Event.url_id == Url.id) & (Event.event_type == 'click'))
+        .group_by(Url.id)
+        .order_by(fn.COUNT(Event.id).desc())
+        .limit(n)
+    )
+    out = [{**model_to_dict(u, recurse=False), 'click_count': getattr(u, 'click_count', 0)} for u in results]
+    return jsonify(out)
+
+
+@urls_bp.route("/urls/<int:id>/stats", methods=["GET"])
+def get_url_stats(id):
+    url, err = _get_url_or_404(id)
+    if err:
+        return err
+    events = Event.select().where(Event.url_id == id)
+    clicks = events.where(Event.event_type == 'click')
+    last_click = clicks.order_by(Event.timestamp.desc()).first()
+    return jsonify({
+        "url_id": id,
+        "short_code": url.short_code,
+        "click_count": clicks.count(),
+        "unique_users": events.where(Event.user_id.is_null(False)).select(Event.user_id).distinct().count(),
+        "last_clicked_at": last_click.timestamp.isoformat() if last_click else None,
+    })
+
 
 @urls_bp.route("/urls/<int:id>", methods=["GET"])
 def get_url(id):
+    url, err = _get_url_or_404(id)
+    return err or jsonify(url_to_dict(url))
+
+
+@urls_bp.route("/urls/<short_code>", methods=["GET"])
+def get_url_by_short_code(short_code):
     try:
-        url = Url.get_by_id(id)
-        return jsonify(url_to_dict(url))
+        return jsonify(url_to_dict(Url.get(Url.short_code == short_code)))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
+
 
 @urls_bp.route("/urls", methods=["POST"])
 def create_url():
@@ -82,58 +123,52 @@ def create_url():
         title=data.get('title'),
         is_active=data.get('is_active', True),
         created_at=datetime.now(),
-        updated_at=datetime.now()
+        updated_at=datetime.now(),
     )
     urls_created_total.inc()
     return jsonify(url_to_dict(url)), 201
 
+
 @urls_bp.route("/urls/<int:id>", methods=["PUT"])
 def update_url(id):
-    try:
-        url = Url.get_by_id(id)
-    except Url.DoesNotExist:
-        return jsonify({"error": "URL not found"}), 404
+    url, err = _get_url_or_404(id)
+    if err:
+        return err
     data = request.get_json()
-    if 'original_url' in data:
-        url.original_url = data['original_url']
-    if 'title' in data:
-        url.title = data['title']
-    if 'is_active' in data:
-        url.is_active = data['is_active']
+    for field in ('original_url', 'title', 'is_active'):
+        if field in data:
+            setattr(url, field, data[field])
     url.updated_at = datetime.now()
     url.save()
     return jsonify(url_to_dict(url))
 
+
 @urls_bp.route("/urls/<int:id>", methods=["DELETE"])
 def delete_url(id):
-    try:
-        url = Url.get_by_id(id)
-        url.delete_instance()
-        return jsonify({"message": "Deleted"}), 200
-    except Url.DoesNotExist:
-        return jsonify({"error": "URL not found"}), 404
+    deleted = Url.delete().where(Url.id == id).execute()
+    return (jsonify({"message": "Deleted"}), 200) if deleted else (jsonify({"error": "URL not found"}), 404)
+
 
 @urls_bp.route("/urls/bulk", methods=["POST"])
 def bulk_upload_urls():
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
-    file = request.files['file']
-    content = file.read().decode('utf-8')
-    reader = csv.DictReader(io.StringIO(content))
-    rows = []
-    for row in reader:
-        rows.append({
-            'id': int(row['id']),
-            'user_id': int(row['user_id']),
-            'short_code': row['short_code'],
-            'original_url': row['original_url'],
-            'title': row['title'],
-            'is_active': row['is_active'] == 'TRUE',
-            'created_at': row['created_at'],
-            'updated_at': row['updated_at']
-        })
+    reader = csv.DictReader(io.StringIO(request.files['file'].read().decode('utf-8')))
+    rows = [
+        {
+            'id': int(r['id']),
+            'user_id': int(r['user_id']),
+            'short_code': r['short_code'],
+            'original_url': r['original_url'],
+            'title': r['title'],
+            'is_active': r['is_active'] == 'TRUE',
+            'created_at': r['created_at'],
+            'updated_at': r['updated_at'],
+        }
+        for r in reader
+    ]
     with db.atomic():
-        for batch in chunked(rows, 100):
+        for batch in chunked(rows, 1000):
             Url.insert_many(batch).execute()
     try:
         db.execute_sql("SELECT setval(pg_get_serial_sequence('urls', 'id'), MAX(id)) FROM urls")
@@ -141,58 +176,6 @@ def bulk_upload_urls():
         pass
     return jsonify({"count": len(rows)}), 201
 
-@urls_bp.route("/urls/top", methods=["GET"])
-def top_urls():
-    n = request.args.get('n', 10, type=int)
-    results = (
-        Url.select(Url, fn.COUNT(Event.id).alias('click_count'))
-        .join(Event, JOIN.LEFT_OUTER, on=(Event.url_id == Url.id) & (Event.event_type == 'click'))
-        .group_by(Url.id)
-        .order_by(fn.COUNT(Event.id).desc())
-        .limit(n)
-    )
-    out = []
-    for url in results:
-        d = model_to_dict(url, recurse=False)
-        d['click_count'] = getattr(url, 'click_count', 0)
-        out.append(d)
-    return jsonify(out)
-
-@urls_bp.route("/urls/<int:id>/stats", methods=["GET"])
-def get_url_stats(id):
-    try:
-        url = Url.get_by_id(id)
-    except Url.DoesNotExist:
-        return jsonify({"error": "URL not found"}), 404
-
-    events = Event.select().where(Event.url_id == id)
-    click_count = events.where(Event.event_type == 'click').count()
-    unique_users = (
-        events.where(Event.user_id.is_null(False))
-        .select(Event.user_id)
-        .distinct()
-        .count()
-    )
-    last_click = (
-        events.where(Event.event_type == 'click')
-        .order_by(Event.timestamp.desc())
-        .first()
-    )
-    return jsonify({
-        "url_id": id,
-        "short_code": url.short_code,
-        "click_count": click_count,
-        "unique_users": unique_users,
-        "last_clicked_at": last_click.timestamp.isoformat() if last_click else None,
-    })
-
-@urls_bp.route("/urls/<short_code>", methods=["GET"])
-def get_url_by_short_code(short_code):
-    try:
-        url = Url.get(Url.short_code == short_code)
-        return jsonify(url_to_dict(url))
-    except Url.DoesNotExist:
-        return jsonify({"error": "URL not found"}), 404
 
 @urls_bp.route("/<short_code>", methods=["GET"])
 def redirect_url(short_code):
@@ -200,13 +183,7 @@ def redirect_url(short_code):
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
-        Event.create(
-            url_id=url.id,
-            user_id=None,
-            event_type="click",
-            timestamp=datetime.now(),
-            details=None,
-        )
+        Event.create(url_id=url.id, user_id=None, event_type="click", timestamp=datetime.now(), details=None)
         redirects_total.inc()
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
