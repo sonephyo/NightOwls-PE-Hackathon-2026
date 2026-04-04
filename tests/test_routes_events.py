@@ -1,0 +1,185 @@
+"""
+Tests for the /events routes.
+"""
+
+import io
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# GET /events
+# ---------------------------------------------------------------------------
+
+class TestListEvents:
+    def test_returns_empty_list_when_no_events(self, client):
+        resp = client.get("/events")
+        assert resp.status_code == 200
+        assert resp.get_json() == []
+
+    def test_returns_created_event(self, client, sample_event):
+        data = client.get("/events").get_json()
+        assert len(data) == 1
+        assert data[0]["event_type"] == sample_event["event_type"]
+
+    def test_pagination_per_page(self, client, sample_user, sample_url):
+        for i in range(5):
+            client.post(
+                "/events",
+                json={
+                    "url_id": sample_url["id"],
+                    "user_id": sample_user["id"],
+                    "event_type": f"type{i}",
+                },
+            )
+        resp = client.get("/events?per_page=3")
+        assert len(resp.get_json()) == 3
+
+    def test_response_is_list(self, client):
+        assert isinstance(client.get("/events").get_json(), list)
+
+
+# ---------------------------------------------------------------------------
+# GET /events/<id>
+# ---------------------------------------------------------------------------
+
+class TestGetEvent:
+    def test_returns_event_by_id(self, client, sample_event):
+        resp = client.get(f"/events/{sample_event['id']}")
+        assert resp.status_code == 200
+        assert resp.get_json()["event_type"] == sample_event["event_type"]
+
+    def test_returns_404_for_missing_event(self, client):
+        resp = client.get("/events/999999")
+        assert resp.status_code == 404
+        assert "error" in resp.get_json()
+
+    def test_response_contains_expected_fields(self, client, sample_event):
+        data = client.get(f"/events/{sample_event['id']}").get_json()
+        for field in ("id", "event_type", "timestamp"):
+            assert field in data
+
+    def test_details_are_deserialized_to_dict(self, client, sample_event):
+        data = client.get(f"/events/{sample_event['id']}").get_json()
+        # sample_event was created with details={"browser": "firefox"}
+        assert isinstance(data["details"], dict)
+        assert data["details"]["browser"] == "firefox"
+
+
+# ---------------------------------------------------------------------------
+# POST /events
+# ---------------------------------------------------------------------------
+
+class TestCreateEvent:
+    def test_creates_event_with_required_fields(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "view",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.get_json()
+        assert data["event_type"] == "view"
+
+    def test_creates_event_with_details(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "click",
+                "details": {"referrer": "google"},
+            },
+        )
+        assert resp.status_code == 201
+        # details should round-trip as a dict
+        assert resp.get_json()["details"] == {"referrer": "google"}
+
+    def test_creates_event_without_details(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "view",
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["details"] is None
+
+    def test_returns_error_when_body_is_empty(self, client):
+        # json=None sends no body; Flask 3 may return 415 instead of 400
+        resp = client.post("/events", json=None)
+        assert resp.status_code in (400, 415)
+
+    def test_timestamp_is_set_automatically(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "download",
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.get_json().get("timestamp") is not None
+
+    def test_created_event_is_retrievable(self, client, sample_user, sample_url):
+        resp = client.post(
+            "/events",
+            json={
+                "url_id": sample_url["id"],
+                "user_id": sample_user["id"],
+                "event_type": "share",
+            },
+        )
+        event_id = resp.get_json()["id"]
+        fetched = client.get(f"/events/{event_id}")
+        assert fetched.status_code == 200
+        assert fetched.get_json()["event_type"] == "share"
+
+
+# ---------------------------------------------------------------------------
+# POST /events/bulk
+# ---------------------------------------------------------------------------
+
+class TestBulkUploadEvents:
+    def _csv(self, url_id, user_id):
+        return (
+            "id,url_id,user_id,event_type,timestamp,details\n"
+            f"301,{url_id},{user_id},click,2024-06-01 12:00:00,\n"
+            f"302,{url_id},{user_id},view,2024-06-02 08:00:00,\n"
+        )
+
+    def test_inserts_rows_from_csv(self, client, sample_user, sample_url):
+        csv = self._csv(sample_url["id"], sample_user["id"])
+        data = {"file": (io.BytesIO(csv.encode()), "events.csv")}
+        resp = client.post("/events/bulk", data=data, content_type="multipart/form-data")
+        assert resp.status_code == 201
+        assert resp.get_json()["count"] == 2
+
+    def test_events_are_queryable_after_bulk_insert(self, client, sample_user, sample_url):
+        csv = self._csv(sample_url["id"], sample_user["id"])
+        data = {"file": (io.BytesIO(csv.encode()), "events.csv")}
+        client.post("/events/bulk", data=data, content_type="multipart/form-data")
+        events = client.get("/events").get_json()
+        event_types = {e["event_type"] for e in events}
+        assert "click" in event_types
+        assert "view" in event_types
+
+    def test_returns_400_when_no_file_provided(self, client):
+        resp = client.post("/events/bulk", data={}, content_type="multipart/form-data")
+        assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# GET /health  (sanity check)
+# ---------------------------------------------------------------------------
+
+class TestHealthEndpoint:
+    def test_health_returns_ok(self, client):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "ok"}
