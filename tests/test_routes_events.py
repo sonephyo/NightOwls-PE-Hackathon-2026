@@ -188,19 +188,19 @@ class TestCreateEvent:
         )
         assert resp.status_code == 400
 
-    def test_returns_404_when_url_id_does_not_exist(self, client, sample_user):
+    def test_returns_400_when_url_id_does_not_exist(self, client, sample_user):
         resp = client.post(
             "/events",
             json={"url_id": 999999, "user_id": sample_user["id"], "event_type": "click"},
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 400
 
-    def test_returns_404_when_user_id_does_not_exist(self, client, sample_url):
+    def test_returns_400_when_user_id_does_not_exist(self, client, sample_url):
         resp = client.post(
             "/events",
             json={"url_id": sample_url["id"], "user_id": 999999, "event_type": "click"},
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 400
 
     def test_returns_400_when_event_type_is_whitespace(self, client, sample_user, sample_url):
         resp = client.post(

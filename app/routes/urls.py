@@ -159,7 +159,7 @@ def create_url():
     if not isinstance(user_id, int) or isinstance(user_id, bool):
         return jsonify({"error": "user_id must be an integer"}), 400
     if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == user_id).exists():
-        return jsonify({"error": "User not found"}), 404
+        return jsonify({"error": "invalid user_id"}), 400
 
     original_url = data['original_url']
     if not isinstance(original_url, str) or not is_valid_url(original_url):
@@ -277,7 +277,7 @@ def redirect_url(short_code):
             except (TypeError, ValueError):
                 return jsonify({"error": "user_id must be an integer"}), 400
             if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
-                return jsonify({"error": "User not found"}), 404
+                return jsonify({"error": "invalid user_id"}), 400
 
         with db.atomic():
             Event.create(

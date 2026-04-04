@@ -90,13 +90,13 @@ def create_event():
     if not isinstance(data.get('url_id'), int) or isinstance(data.get('url_id'), bool):
         return jsonify({"error": "url_id must be an integer"}), 400
     if not Event.url_id.rel_model.select().where(Event.url_id.rel_model.id == data['url_id']).exists():
-        return jsonify({"error": "URL not found"}), 404
+        return jsonify({"error": "invalid url_id"}), 400
     if not isinstance(data.get('event_type'), str) or not data.get('event_type').strip():
         return jsonify({"error": "event_type required"}), 400
     if data.get('user_id') is not None and (not isinstance(data.get('user_id'), int) or isinstance(data.get('user_id'), bool)):
         return jsonify({"error": "user_id must be an integer"}), 400
     if data.get('user_id') is not None and not Event.user_id.rel_model.select().where(Event.user_id.rel_model.id == data['user_id']).exists():
-        return jsonify({"error": "User not found"}), 404
+        return jsonify({"error": "invalid user_id"}), 400
     if data.get('details') is not None and not isinstance(data['details'], dict):
         return jsonify({"error": "details must be an object"}), 400
     try:

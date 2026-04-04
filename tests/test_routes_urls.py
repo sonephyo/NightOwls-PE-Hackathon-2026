@@ -297,9 +297,9 @@ class TestCreateUrl:
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": True})
         assert resp.status_code == 400
 
-    def test_returns_404_when_user_does_not_exist(self, client):
+    def test_returns_400_when_user_does_not_exist(self, client):
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": 999999})
-        assert resp.status_code == 404
+        assert resp.status_code == 400
 
     def test_accepts_explicit_short_code_with_symbols(self, client, sample_user):
         resp = client.post(
@@ -470,9 +470,9 @@ class TestRedirectUrl:
         events = client.get("/events").get_json()
         assert len(events) == 0
 
-    def test_redirect_returns_404_for_unknown_user_id(self, client, sample_url):
+    def test_redirect_returns_400_for_unknown_user_id(self, client, sample_url):
         resp = client.get(f"/{sample_url['short_code']}?user_id=999999")
-        assert resp.status_code == 404
+        assert resp.status_code == 400
         events = client.get("/events").get_json()
         assert len(events) == 0
 
