@@ -3,6 +3,7 @@ import io
 import random
 import string
 from datetime import datetime
+from urllib.parse import urlparse
 from flask import Blueprint, jsonify, request, redirect
 import structlog
 from playhouse.shortcuts import model_to_dict
@@ -30,6 +31,14 @@ _UPDATE_FIELDS = {'original_url', 'title', 'is_active'}
 
 def generate_short_code(length=6):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
+def is_valid_url(url):
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+    except Exception:
+        return False
 
 
 def url_to_dict(url):
@@ -112,8 +121,6 @@ def get_url(id):
 def get_url_by_short_code(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
-        if not url.is_active:
-            return jsonify({"error": "URL is inactive"}), 410
         return jsonify(url_to_dict(url))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
@@ -139,7 +146,7 @@ def create_url():
         return jsonify({"error": "invalid user_id"}), 400
 
     original_url = data['original_url']
-    if not isinstance(original_url, str) or not (original_url.startswith('http://') or original_url.startswith('https://')):
+    if not isinstance(original_url, str) or not is_valid_url(original_url):
         return jsonify({"error": "original_url must be a valid URL"}), 400
     if data.get('title') is not None and not isinstance(data.get('title'), str):
         return jsonify({"error": "title must be a string"}), 400
@@ -188,7 +195,7 @@ def update_url(id):
     if not any(field in data for field in _UPDATE_FIELDS):
         return jsonify({"error": "Invalid data"}), 400
     if 'original_url' in data:
-        if not isinstance(data['original_url'], str) or not (data['original_url'].startswith('http://') or data['original_url'].startswith('https://')):
+        if not isinstance(data['original_url'], str) or not is_valid_url(data['original_url']):
             return jsonify({"error": "original_url must be a valid URL"}), 400
     if 'title' in data and data['title'] is not None and not isinstance(data['title'], str):
         return jsonify({"error": "title must be a string"}), 400
