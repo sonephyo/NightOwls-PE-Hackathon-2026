@@ -23,38 +23,37 @@
 ### System Diagram
 
 ```
-                        ┌─────────────────────────────────────────────────┐
-                        │               Docker Network: observability       │
-                        │                                                   │
-  Browser / Client      │   ┌─────────────────────┐                        │
-  ─────────────────────►│   │   Flask App          │                        │
-  http://localhost:8000 │   │   (Gunicorn :8000)   │◄──── scrape /metrics ──┤
-                        │   │                      │                        │
-                        │   │  - URL shortening    │      ┌──────────────┐  │
-                        │   │  - Redirect logic    │      │  Prometheus  │  │
-                        │   │  - REST API          │      │   (:9090)    │  │
-                        │   │  - Structured logs   │      └──────┬───────┘  │
-                        │   └──────────┬───────────┘             │          │
-                        │              │ SQL                      │ query    │
-                        │   ┌──────────▼───────────┐      ┌──────▼───────┐  │
-                        │   │   PostgreSQL          │      │   Grafana    │  │
-                        │   │      (:5432)          │      │   (:3000)    │  │
-                        │   │                       │      └──────┬───────┘  │
-                        │   │  - users table        │             │ query    │
-                        │   │  - urls table         │      ┌──────▼───────┐  │
-                        │   │  - events table       │      │     Loki     │  │
-                        │   └───────────────────────┘      │   (:3100)    │  │
-                        │                                  └──────▲───────┘  │
-                        │   ┌───────────────────────┐             │          │
-                        │   │       Promtail         │─────────────┘          │
-                        │   │   (log forwarder)      │  push logs             │
-                        │   └───────────────────────┘                        │
-                        │                                                     │
-                        │   ┌───────────────────────┐                        │
-                        │   │    Alertmanager        │                        │
-                        │   │      (:9093)           │                        │
-                        │   └───────────────────────┘                        │
-                        └─────────────────────────────────────────────────────┘
+                        ┌──────────────────────────────────────────────────────────┐
+                        │                Docker Network: observability              │
+                        │                                                            │
+  Browser / Client      │   ┌──────────────────────┐                               │
+  ─────────────────────►│   │   Nginx (:80→8000)   │   ← least_conn, keepalive     │
+  http://localhost:8000 │   └────┬──────┬──────┬───┘                               │
+                        │        ↓      ↓      ↓                                    │
+                        │   app-1    app-2    app-3   ← 3 replicas (2-6 via        │
+                        │   4w       4w       4w        autoscaler)                 │
+                        │    └──────────┬────────┘                                  │
+                        │              │ cache GET/SET                               │
+                        │   ┌──────────▼──────────┐   ◄── scrape /metrics ─────── │
+                        │   │    Redis (:6379)     │          ┌──────────────┐      │
+                        │   │   5-min TTL cache    │          │  Prometheus  │      │
+                        │   └──────────┬───────────┘          │   (:9090)    │      │
+                        │              │ cache miss SQL        └──────┬───────┘      │
+                        │   ┌──────────▼───────────┐                 │ query        │
+                        │   │   PostgreSQL (:5432)  │          ┌──────▼───────┐     │
+                        │   │  - users table        │          │   Grafana    │     │
+                        │   │  - urls table         │          │   (:3000)    │     │
+                        │   │  - events table       │          └──────┬───────┘     │
+                        │   └───────────────────────┘                 │ query       │
+                        │                                       ┌──────▼───────┐    │
+                        │   ┌───────────────────────┐           │     Loki     │    │
+                        │   │       Promtail         │──────────►│   (:3100)    │    │
+                        │   │   (log forwarder)      │  push logs└──────────────┘    │
+                        │   └───────────────────────┘                                │
+                        │   ┌───────────────────────┐                                │
+                        │   │    Alertmanager (:9093)│                                │
+                        │   └───────────────────────┘                                │
+                        └────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow — Shorten a URL
@@ -65,8 +64,10 @@
    ├── Yes → return existing short code (HTTP 200)
    └── No  → generate 6-char random code → save to DB → return (HTTP 201)
 3. User visits http://localhost:8000/<short_code>
-4. App looks up short_code in DB
-   ├── Found + active   → HTTP 302 redirect to original_url
+4. Nginx routes request to least-busy app replica
+5. App checks Redis cache first
+   ├── Cache hit  → HTTP 302 redirect (<1ms, no DB query)
+   └── Cache miss → lookup PostgreSQL → store in Redis (5min TTL) → HTTP 302 redirect
    ├── Found + inactive → HTTP 410 Gone
    └── Not found        → HTTP 404
 ```
@@ -75,7 +76,9 @@
 
 | Service | Image | Port | Purpose |
 |---|---|---|---|
-| app | custom (Python 3.13) | 8000 | Flask URL shortener |
+| nginx | nginx:alpine | 8000 (public) | Load balancer — routes to app replicas |
+| app (×3) | custom (Python 3.13) | 8000 (internal) | Flask URL shortener, 4 Gunicorn workers each |
+| redis | redis:7-alpine | 6379 (internal) | Short-code redirect cache (5-min TTL) |
 | db | postgres:16-alpine | 5432 (internal) | Data persistence |
 | prometheus | prom/prometheus:latest | 9090 | Metrics collection |
 | loki | grafana/loki:3.0.0 | 3100 (internal) | Log aggregation |
@@ -117,6 +120,7 @@ Returns Prometheus-formatted metrics. Scraped automatically every 5 seconds.
 | `app_ram_usage_mb` | Gauge | Flask process memory (MB) |
 | `app_urls_created_total` | Counter | Total URLs shortened |
 | `app_redirects_total` | Counter | Total redirects served |
+| `app_cache_hits_total` | Counter | Total Redis cache hits on redirect |
 
 **Response `200`** — plain text Prometheus format
 ```
@@ -198,9 +202,9 @@ Creates a new shortened URL. If the `original_url` already exists in the databas
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `original_url` | string | Yes | The full URL to shorten |
+| `user_id` | int | Yes | Owner user ID (must exist in users table) |
 | `short_code` | string | No | Custom short code (auto-generated if omitted) |
 | `title` | string | No | Human-readable label |
-| `user_id` | int | No | Owner user ID (defaults to 1) |
 | `is_active` | bool | No | Whether redirects are enabled (default: true) |
 
 **Example**
@@ -356,6 +360,8 @@ cp .env.example .env
 | `DATABASE_PORT` | `5432` | Yes | PostgreSQL port |
 | `DATABASE_USER` | `postgres` | Yes | PostgreSQL username |
 | `DATABASE_PASSWORD` | `postgres` | Yes | PostgreSQL password |
+| `REDIS_HOST` | `localhost` | No | Redis host. Use `redis` when running inside Docker Compose. |
+| `REDIS_PORT` | `6379` | No | Redis port. App falls back to DB-only mode if Redis is unreachable. |
 
 > **Note:** When running via `docker compose`, the environment variables are set directly in `docker-compose.yml` and override `.env`. The `.env` file is only used when running the app locally outside Docker (e.g. `uv run run.py`).
 
@@ -382,7 +388,9 @@ The first run will:
 - Pull Prometheus, Grafana, Loki, and other images
 - Start PostgreSQL and wait for it to be healthy
 - Run `seed.py` to create tables and load sample data (~1000 users, ~10k URLs, ~20k events)
-- Start Gunicorn with 2 workers on port 8000
+- Start Redis cache
+- Start 3 app replicas, each running Gunicorn with 4 workers
+- Start Nginx load balancer on port 8000
 
 **Verify everything is running:**
 ```bash
@@ -696,11 +704,13 @@ Loki aggregates logs from all containers in one place, queryable via Grafana. Un
 
 | Component | Setting |
 |---|---|
-| Gunicorn workers | 2 |
+| Nginx | 1 instance, least_conn, worker_connections 4096 |
+| App replicas | 3 (autoscaler range: 2–6) |
+| Gunicorn workers | 4 per replica = 12–24 total |
 | Worker type | sync (blocking) |
-| DB connections | 1 per worker = 2 max |
+| DB connections | 1 per worker = up to 24 max |
 | DB | Single PostgreSQL instance |
-| Caching | None |
+| Caching | Redis (5-min TTL on redirects) |
 
 ### Load Test Baseline
 
@@ -714,24 +724,24 @@ The existing `load_test.js` runs 50 concurrent virtual users for 1 minute hittin
 
 | Layer | Bottleneck | Impact |
 |---|---|---|
-| Gunicorn | 2 sync workers | Requests queue up beyond 2 concurrent. Adding workers increases throughput. |
-| PostgreSQL | Single instance, no connection pool | Each redirect hits the DB. No caching means every request is a query. |
-| No Redis | Every lookup hits DB | Adding Redis would cache popular short codes in memory, eliminating DB reads for hot URLs. |
+| Gunicorn | Sync workers | Requests queue up beyond 24 concurrent slots. Switching to async (gevent/uvicorn) would help at 1000+ users. |
+| PostgreSQL | Single instance | Cache misses still hit the DB. At very high load, consider connection pooling (PgBouncer) or read replicas. |
+| Redis | Single instance | If Redis goes down, all requests fall back to PostgreSQL. Acceptable for this scale. |
 
 ### Scaling Steps
 
 | User Load | What to do |
 |---|---|
-| Up to 50 | Current setup handles this |
-| 50–200 | Increase Gunicorn workers to 4–8, add a second app container behind Nginx |
-| 200–500 | Add Redis caching for redirects, tune PostgreSQL `max_connections` |
-| 500+ | Add read replicas for PostgreSQL, horizontal scaling with multiple app containers |
+| Up to 200 | Current setup (3 replicas, Redis) handles this with ease |
+| 200–500 | Already handled — Redis cache keeps DB load low |
+| 500–1000 | Autoscaler adds replicas (up to 6) — tested and working |
+| 1000+ | Consider async Gunicorn workers (gevent), PgBouncer, or PostgreSQL read replicas |
 
 ### Estimated Limits (Current Setup)
 
-- **Concurrent users before degradation:** ~50–80
-- **Requests/second before errors:** ~50 req/s
-- **Breaking point:** 2 Gunicorn workers means requests beyond 2 concurrent start queuing. At ~100+ concurrent users, response times will climb above 3 seconds and errors will appear.
+- **Concurrent users before degradation:** ~800–1000
+- **Requests/second sustained:** ~680 req/s (tested at 1000 VUs)
+- **p95 at 1000 users:** 588ms — system stays under the 3s threshold
 
 ### How to Verify
 
