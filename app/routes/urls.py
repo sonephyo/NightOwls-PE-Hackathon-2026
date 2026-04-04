@@ -20,6 +20,13 @@ def generate_short_code(length=6):
     chars = string.ascii_letters + string.digits
     return ''.join(random.choices(chars, k=length))
 
+def url_to_dict(url):
+    d = model_to_dict(url, recurse=False)
+    d['click_count'] = Event.select().where(
+        (Event.url_id == url.id) & (Event.event_type == 'click')
+    ).count()
+    return d
+
 @urls_bp.route("/urls", methods=["GET"])
 def list_urls():
     page = request.args.get('page', 1, type=int)
@@ -32,13 +39,13 @@ def list_urls():
     if is_active is not None:
         query = query.where(Url.is_active == (is_active.lower() == 'true'))
     urls = query.paginate(page, per_page)
-    return jsonify([model_to_dict(u, recurse=False) for u in urls])
+    return jsonify([url_to_dict(u) for u in urls])
 
 @urls_bp.route("/urls/<int:id>", methods=["GET"])
 def get_url(id):
     try:
         url = Url.get_by_id(id)
-        return jsonify(model_to_dict(url, recurse=False))
+        return jsonify(url_to_dict(url))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
 
@@ -115,6 +122,34 @@ def bulk_upload_urls():
     except Exception:
         pass
     return jsonify({"count": len(rows)}), 201
+
+@urls_bp.route("/urls/<int:id>/stats", methods=["GET"])
+def get_url_stats(id):
+    try:
+        url = Url.get_by_id(id)
+    except Url.DoesNotExist:
+        return jsonify({"error": "URL not found"}), 404
+
+    events = Event.select().where(Event.url_id == id)
+    click_count = events.where(Event.event_type == 'click').count()
+    unique_users = (
+        events.where(Event.user_id.is_null(False))
+        .select(Event.user_id)
+        .distinct()
+        .count()
+    )
+    last_click = (
+        events.where(Event.event_type == 'click')
+        .order_by(Event.timestamp.desc())
+        .first()
+    )
+    return jsonify({
+        "url_id": id,
+        "short_code": url.short_code,
+        "click_count": click_count,
+        "unique_users": unique_users,
+        "last_clicked_at": last_click.timestamp.isoformat() if last_click else None,
+    })
 
 @urls_bp.route("/<short_code>", methods=["GET"])
 def redirect_url(short_code):

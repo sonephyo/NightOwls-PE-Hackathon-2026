@@ -59,6 +59,16 @@ class TestListUrls:
         resp = client.get("/urls?per_page=3")
         assert len(resp.get_json()) == 3
 
+    def test_click_count_field_present(self, client, sample_url):
+        data = client.get("/urls").get_json()
+        assert "click_count" in data[0]
+
+    def test_click_count_increments_on_redirect(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        client.get(f"/{sample_url['short_code']}")
+        data = client.get("/urls").get_json()
+        assert data[0]["click_count"] == 2
+
 
 # ---------------------------------------------------------------------------
 # GET /urls/<id>
@@ -83,6 +93,16 @@ class TestGetUrl:
     def test_user_id_is_integer(self, client, sample_url, sample_user):
         data = client.get(f"/urls/{sample_url['id']}").get_json()
         assert data["user_id"] == sample_user["id"]
+
+    def test_click_count_present(self, client, sample_url):
+        data = client.get(f"/urls/{sample_url['id']}").get_json()
+        assert "click_count" in data
+        assert data["click_count"] == 0
+
+    def test_click_count_reflects_redirects(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        data = client.get(f"/urls/{sample_url['id']}").get_json()
+        assert data["click_count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -275,3 +295,43 @@ class TestBulkUploadUrls:
     def test_returns_400_when_no_file_provided(self, client):
         resp = client.post("/urls/bulk", data={}, content_type="multipart/form-data")
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# GET /urls/<id>/stats
+# ---------------------------------------------------------------------------
+
+class TestUrlStats:
+    def test_returns_200_for_existing_url(self, client, sample_url):
+        resp = client.get(f"/urls/{sample_url['id']}/stats")
+        assert resp.status_code == 200
+
+    def test_returns_404_for_missing_url(self, client):
+        resp = client.get("/urls/999999/stats")
+        assert resp.status_code == 404
+
+    def test_contains_expected_fields(self, client, sample_url):
+        data = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        for field in ("url_id", "short_code", "click_count", "unique_users", "last_clicked_at"):
+            assert field in data
+
+    def test_click_count_zero_initially(self, client, sample_url):
+        data = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        assert data["click_count"] == 0
+        assert data["last_clicked_at"] is None
+
+    def test_click_count_increments_on_redirect(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        client.get(f"/{sample_url['short_code']}")
+        data = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        assert data["click_count"] == 2
+
+    def test_last_clicked_at_set_after_redirect(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        data = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        assert data["last_clicked_at"] is not None
+
+    def test_url_id_and_short_code_match(self, client, sample_url):
+        data = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        assert data["url_id"] == sample_url["id"]
+        assert data["short_code"] == sample_url["short_code"]
