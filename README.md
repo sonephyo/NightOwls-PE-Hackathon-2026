@@ -140,3 +140,56 @@ def register_routes(app):
     from app.routes.urls import urls_bp  # your new blueprint
     app.register_blueprint(urls_bp)
 ```
+
+---
+
+## Error Handling
+
+All errors are returned as JSON — the app never returns an HTML error page.
+
+### 404 Not Found
+
+Returned when a route or resource does not exist.
+
+**Unmatched route** (registered in `app/__init__.py`):
+```json
+HTTP 404
+{ "error": "not found" }
+```
+
+**Resource not found** (e.g. `GET /urls/999`):
+```json
+HTTP 404
+{ "error": "URL not found" }
+```
+
+**Inactive short code** (redirect to a deactivated URL):
+```json
+HTTP 410
+{ "error": "URL is inactive" }
+```
+
+### 500 Internal Server Error
+
+Returned when an unhandled exception occurs anywhere in the app (registered in `app/__init__.py`). The exception is logged via structlog before responding.
+
+```json
+HTTP 500
+{ "error": "internal server error" }
+```
+
+The full stack trace appears in the application logs (visible in Grafana → Loki, query `{service="app"} | json | level="error"`).
+
+### 400 Bad Request
+
+Returned by individual route handlers when required fields are missing or the request body is invalid.
+
+```json
+HTTP 400
+{ "error": "original_url required" }
+```
+
+```json
+HTTP 400
+{ "error": "Invalid data" }
+```
