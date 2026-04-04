@@ -132,7 +132,8 @@ def create_url():
         return jsonify({"error": "title must be a string"}), 400
     if 'is_active' in data and not isinstance(data['is_active'], bool):
         return jsonify({"error": "is_active must be a boolean"}), 400
-    if explicit_code := data.get('short_code'):
+    if 'short_code' in data:
+        explicit_code = data.get('short_code')
         if not isinstance(explicit_code, str) or not explicit_code:
             return jsonify({"error": "short_code must be a non-empty string"}), 400
         if len(explicit_code) > 10:
@@ -226,10 +227,21 @@ def redirect_url(short_code):
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
+
+        raw_user_id = request.args.get('user_id')
+        event_user_id = None
+        if raw_user_id is not None:
+            try:
+                event_user_id = int(raw_user_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "user_id must be an integer"}), 400
+            if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
+                return jsonify({"error": "invalid user_id"}), 400
+
         with db.atomic():
             Event.create(
                 url_id=url.id,
-                user_id=None,
+                user_id=event_user_id,
                 event_type="click",
                 timestamp=datetime.now(),
                 details=None,

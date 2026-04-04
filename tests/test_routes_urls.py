@@ -272,6 +272,13 @@ class TestCreateUrl:
         )
         assert resp.status_code == 400
 
+    def test_returns_400_for_explicit_short_code_empty_string(self, client, sample_user):
+        resp = client.post(
+            "/urls",
+            json={"original_url": "https://x.com", "short_code": "", "user_id": sample_user["id"]},
+        )
+        assert resp.status_code == 400
+
     def test_created_url_is_retrievable(self, client, sample_user):
         resp = client.post(
             "/urls",
@@ -376,6 +383,25 @@ class TestRedirectUrl:
     def test_no_click_event_for_inactive_url(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
         client.get(f"/{sample_url['short_code']}")
+        events = client.get("/events").get_json()
+        assert len(events) == 0
+
+    def test_redirect_records_click_with_user_id_when_provided(self, client, sample_url, sample_user):
+        resp = client.get(f"/{sample_url['short_code']}?user_id={sample_user['id']}")
+        assert resp.status_code == 302
+        events = client.get("/events").get_json()
+        assert len(events) == 1
+        assert events[0]["user_id"] == sample_user["id"]
+
+    def test_redirect_returns_400_for_non_integer_user_id(self, client, sample_url):
+        resp = client.get(f"/{sample_url['short_code']}?user_id=abc")
+        assert resp.status_code == 400
+        events = client.get("/events").get_json()
+        assert len(events) == 0
+
+    def test_redirect_returns_400_for_unknown_user_id(self, client, sample_url):
+        resp = client.get(f"/{sample_url['short_code']}?user_id=999999")
+        assert resp.status_code == 400
         events = client.get("/events").get_json()
         assert len(events) == 0
 
