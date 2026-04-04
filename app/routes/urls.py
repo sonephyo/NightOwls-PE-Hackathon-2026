@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request, redirect
 import structlog
 from playhouse.shortcuts import model_to_dict
 from peewee import chunked, fn, JOIN
+from peewee import DataError, IntegrityError
 from app.database import db
 from app.models import Url
 from app.models.event import Event
@@ -134,6 +135,8 @@ def create_url():
     if explicit_code := data.get('short_code'):
         if not isinstance(explicit_code, str) or not explicit_code:
             return jsonify({"error": "short_code must be a non-empty string"}), 400
+        if len(explicit_code) > 10 or not explicit_code.isalnum():
+            return jsonify({"error": "short_code must be alphanumeric and <= 10 chars"}), 400
         if Url.select().where(Url.short_code == explicit_code).exists():
             return jsonify({"error": "short_code already exists"}), 409
         short_code = explicit_code
@@ -141,15 +144,18 @@ def create_url():
         short_code = generate_short_code()
         while Url.select().where(Url.short_code == short_code).exists():
             short_code = generate_short_code()
-    url = Url.create(
-        user_id=user_id,
-        short_code=short_code,
-        original_url=data['original_url'],
-        title=data.get('title'),
-        is_active=data.get('is_active', True),
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
+    try:
+        url = Url.create(
+            user_id=user_id,
+            short_code=short_code,
+            original_url=data['original_url'],
+            title=data.get('title'),
+            is_active=data.get('is_active', True),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+    except (DataError, IntegrityError, ValueError, TypeError) as e:
+        return jsonify({"error": str(e)}), 400
     urls_created_total.inc()
     return jsonify(url_to_dict(url)), 201
 
@@ -169,11 +175,16 @@ def update_url(id):
         return jsonify({"error": "title must be a string"}), 400
     if 'is_active' in data and not isinstance(data['is_active'], bool):
         return jsonify({"error": "is_active must be a boolean"}), 400
+    if not any(field in data for field in ('original_url', 'title', 'is_active')):
+        return jsonify({"error": "No updatable fields provided"}), 400
     for field in ('original_url', 'title', 'is_active'):
         if field in data:
             setattr(url, field, data[field])
     url.updated_at = datetime.now()
-    url.save()
+    try:
+        url.save()
+    except (DataError, IntegrityError, ValueError, TypeError) as e:
+        return jsonify({"error": str(e)}), 400
     return jsonify(url_to_dict(url))
 
 
