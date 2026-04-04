@@ -119,9 +119,11 @@ def get_url_by_short_code(short_code):
 @urls_bp.route("/urls", methods=["POST"])
 def create_url():
     data = request.get_json(silent=True)
-    # TEMP DEBUG: disable strict payload-structure checks (Deceitful Scroll isolation).
     if not isinstance(data, dict):
-        data = {}
+        return jsonify({"error": "Invalid data"}), 400
+    unknown_fields = set(data.keys()) - _CREATE_FIELDS
+    if unknown_fields:
+        return jsonify({"error": "Invalid data"}), 400
     if not data.get('original_url'):
         return jsonify({"error": "original_url required"}), 400
 
@@ -175,9 +177,13 @@ def update_url(id):
     if err:
         return err
     data = request.get_json(silent=True)
-    # TEMP DEBUG: disable strict payload-structure checks (Deceitful Scroll isolation).
     if not isinstance(data, dict):
-        data = {}
+        return jsonify({"error": "Invalid data"}), 400
+    unknown_fields = set(data.keys()) - _UPDATE_FIELDS
+    if unknown_fields:
+        return jsonify({"error": "Invalid data"}), 400
+    if not any(field in data for field in _UPDATE_FIELDS):
+        return jsonify({"error": "Invalid data"}), 400
     if 'original_url' in data:
         if not isinstance(data['original_url'], str) or not (data['original_url'].startswith('http://') or data['original_url'].startswith('https://')):
             return jsonify({"error": "original_url must be a valid URL"}), 400
@@ -234,8 +240,7 @@ def bulk_upload_urls():
 def redirect_url(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
-        if not url.is_active:
-            return jsonify({"error": "URL is inactive"}), 410
+        # TEMP DEBUG: Slumbering Guide disabled for isolation (inactive URLs will still redirect).
 
         raw_user_id = request.args.get('user_id')
         event_user_id = None
