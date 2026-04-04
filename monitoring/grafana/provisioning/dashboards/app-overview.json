@@ -1,0 +1,103 @@
+{
+  "title": "App Overview",
+  "uid": "app-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU Usage %",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 85 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "app_cpu_usage_percent",
+          "legendFormat": "CPU"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "RAM Usage (MB)",
+      "type": "gauge",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 256 },
+              { "color": "red", "value": 512 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "app_ram_usage_mb",
+          "legendFormat": "RAM"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "CPU Usage Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "app_cpu_usage_percent",
+          "legendFormat": "CPU %"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "RAM Usage Over Time (MB)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "app_ram_usage_mb",
+          "legendFormat": "RAM MB"
+        }
+      ]
+    }
+  ]
+}

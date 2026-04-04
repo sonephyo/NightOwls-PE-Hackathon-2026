@@ -1,0 +1,9 @@
+# Placeholder — Silver tier will configure real receivers (Slack/Discord/Email).
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "null"
+
+receivers:
+  - name: "null"
