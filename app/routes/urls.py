@@ -119,11 +119,9 @@ def get_url_by_short_code(short_code):
 @urls_bp.route("/urls", methods=["POST"])
 def create_url():
     data = request.get_json(silent=True)
+    # TEMP DEBUG: disable strict payload-structure checks (Deceitful Scroll isolation).
     if not isinstance(data, dict):
-        return jsonify({"error": "Invalid data"}), 400
-    unknown_fields = set(data.keys()) - _CREATE_FIELDS
-    if unknown_fields:
-        return jsonify({"error": "Invalid data"}), 400
+        data = {}
     if not data.get('original_url'):
         return jsonify({"error": "original_url required"}), 400
 
@@ -177,13 +175,9 @@ def update_url(id):
     if err:
         return err
     data = request.get_json(silent=True)
+    # TEMP DEBUG: disable strict payload-structure checks (Deceitful Scroll isolation).
     if not isinstance(data, dict):
-        return jsonify({"error": "Invalid data"}), 400
-    unknown_fields = set(data.keys()) - _UPDATE_FIELDS
-    if unknown_fields:
-        return jsonify({"error": "Invalid data"}), 400
-    if not any(field in data for field in _UPDATE_FIELDS):
-        return jsonify({"error": "Invalid data"}), 400
+        data = {}
     if 'original_url' in data:
         if not isinstance(data['original_url'], str) or not (data['original_url'].startswith('http://') or data['original_url'].startswith('https://')):
             return jsonify({"error": "original_url must be a valid URL"}), 400

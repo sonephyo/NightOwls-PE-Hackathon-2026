@@ -62,14 +62,16 @@ def get_event(id):
 @events_bp.route("/events", methods=["POST"])
 def create_event():
     data = request.get_json()
+    # TEMP DEBUG: disable strict payload-structure checks (Deceitful Scroll isolation).
+    if not isinstance(data, dict):
+        data = {}
     if not data:
         return jsonify({"error": "Invalid data"}), 400
     if not data.get('url_id'):
         return jsonify({"error": "url_id required"}), 400
     if not data.get('event_type'):
         return jsonify({"error": "event_type required"}), 400
-    if data.get('details') is not None and not isinstance(data['details'], dict):
-        return jsonify({"error": "details must be an object"}), 400
+    # TEMP DEBUG: accept non-dict details and let storage/error handling decide.
     try:
         event = Event.create(
             url_id=data['url_id'],

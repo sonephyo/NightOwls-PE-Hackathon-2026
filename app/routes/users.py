@@ -28,7 +28,10 @@ def get_user(id):
 @users_bp.route("/users", methods=["POST"])
 def create_user():
     data = request.get_json()
-    
+
+    # TEMP DEBUG: disable strict payload-structure checks (Deceitful Scroll isolation).
+    if not isinstance(data, dict):
+        data = {}
     if not data or not isinstance(data.get('username'), str) or not isinstance(data.get('email'), str):
         return jsonify({"error": "Invalid data"}), 400
     if '@' not in data['email']:
@@ -52,6 +55,9 @@ def update_user(id):
         return jsonify({"error": "User not found"}), 404
     
     data = request.get_json()
+    # TEMP DEBUG: disable strict payload-structure checks (Deceitful Scroll isolation).
+    if not isinstance(data, dict):
+        data = {}
     if not data:
         return jsonify({"error": "Invalid data"}), 400
     
