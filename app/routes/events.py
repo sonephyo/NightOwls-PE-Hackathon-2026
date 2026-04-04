@@ -65,13 +65,20 @@ def create_event():
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid data"}), 400
-    event = Event.create(
-        url_id=data.get('url_id'),
-        user_id=data.get('user_id'),
-        event_type=data.get('event_type'),
-        timestamp=datetime.now(),
-        details=json.dumps(data.get('details')) if data.get('details') is not None else None
-    )
+    if not data.get('url_id'):
+        return jsonify({"error": "url_id required"}), 400
+    if not data.get('event_type'):
+        return jsonify({"error": "event_type required"}), 400
+    try:
+        event = Event.create(
+            url_id=data.get('url_id'),
+            user_id=data.get('user_id'),
+            event_type=data.get('event_type'),
+            timestamp=datetime.now(),
+            details=json.dumps(data.get('details')) if data.get('details') is not None else None
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
     return jsonify(event_to_dict(event)), 201
 
 @events_bp.route("/events/bulk", methods=["POST"])

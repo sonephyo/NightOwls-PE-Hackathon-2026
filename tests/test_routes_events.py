@@ -91,6 +91,10 @@ class TestGetEvent:
         for field in ("id", "event_type", "timestamp"):
             assert field in data
 
+    def test_timestamp_is_present(self, client, sample_event):
+        data = client.get(f"/events/{sample_event['id']}").get_json()
+        assert data.get("timestamp") is not None
+
     def test_details_are_deserialized_to_dict(self, client, sample_event):
         data = client.get(f"/events/{sample_event['id']}").get_json()
         # sample_event was created with details={"browser": "firefox"}
@@ -143,9 +147,23 @@ class TestCreateEvent:
         assert resp.get_json()["details"] is None
 
     def test_returns_error_when_body_is_empty(self, client):
-        # json=None sends no body; Flask 3 may return 415 instead of 400
         resp = client.post("/events", json=None)
         assert resp.status_code in (400, 415)
+
+    def test_returns_400_when_url_id_missing(self, client, sample_user):
+        resp = client.post("/events", json={"user_id": sample_user["id"], "event_type": "click"})
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_returns_400_when_event_type_missing(self, client, sample_user, sample_url):
+        resp = client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"]})
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_timestamp_is_present_in_response(self, client, sample_user, sample_url):
+        resp = client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        assert resp.status_code == 201
+        assert resp.get_json().get("timestamp") is not None
 
     def test_timestamp_is_set_automatically(self, client, sample_user, sample_url):
         resp = client.post(
