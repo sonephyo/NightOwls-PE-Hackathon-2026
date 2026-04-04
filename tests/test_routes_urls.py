@@ -227,7 +227,7 @@ class TestRedirectUrl:
         events = client.get("/events").get_json()
         click_events = [e for e in events if e["event_type"] == "click"]
         assert len(click_events) == 1
-        assert click_events[0]["url_id"]["id"] == sample_url["id"]
+        assert click_events[0]["url_id"] == sample_url["id"]
 
     def test_no_click_event_for_inactive_url(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})

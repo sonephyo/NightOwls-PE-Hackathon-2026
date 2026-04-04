@@ -11,7 +11,7 @@ from app.models import Event
 events_bp = Blueprint("events", __name__)
 
 def event_to_dict(e):
-    d = model_to_dict(e)
+    d = model_to_dict(e, recurse=False)
     if d.get('details') and isinstance(d['details'], str):
         try:
             d['details'] = json.loads(d['details'])
@@ -23,7 +23,14 @@ def event_to_dict(e):
 def list_events():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    events = Event.select().paginate(page, per_page)
+    url_id = request.args.get('url_id', type=int)
+    user_id = request.args.get('user_id', type=int)
+    query = Event.select()
+    if url_id:
+        query = query.where(Event.url_id == url_id)
+    if user_id:
+        query = query.where(Event.user_id == user_id)
+    events = query.paginate(page, per_page)
     return jsonify([event_to_dict(e) for e in events])
 
 @events_bp.route("/events/<int:id>", methods=["GET"])

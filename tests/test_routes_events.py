@@ -37,6 +37,30 @@ class TestListEvents:
     def test_response_is_list(self, client):
         assert isinstance(client.get("/events").get_json(), list)
 
+    def test_filters_by_url_id(self, client, sample_user, sample_url):
+        other_url = client.post(
+            "/urls", json={"original_url": "https://other.com", "user_id": sample_user["id"]}
+        ).get_json()
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": other_url["id"], "user_id": sample_user["id"], "event_type": "view"})
+        resp = client.get(f"/events?url_id={sample_url['id']}")
+        assert resp.status_code == 200
+        results = resp.get_json()
+        assert len(results) == 1
+        assert all(e["url_id"] == sample_url["id"] for e in results)
+
+    def test_filters_by_user_id(self, client, sample_user, sample_url):
+        other_user = client.post(
+            "/users", json={"username": "bob", "email": "bob@x.com"}
+        ).get_json()
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": other_user["id"], "event_type": "view"})
+        resp = client.get(f"/events?user_id={sample_user['id']}")
+        assert resp.status_code == 200
+        results = resp.get_json()
+        assert len(results) == 1
+        assert all(e["user_id"] == sample_user["id"] for e in results)
+
 
 # ---------------------------------------------------------------------------
 # GET /events/<id>
