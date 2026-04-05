@@ -6,6 +6,7 @@ the HTTP response, they open the DB and verify the row was actually written,
 updated, or deleted correctly.
 """
 
+import io
 import pytest
 from app.models.url import Url
 from app.models.user import User
@@ -289,3 +290,78 @@ class TestUrlStatsIntegration:
             Event.url_id == sample_url["id"]
         ).order_by(Event.timestamp.desc()).first()
         assert stats["last_clicked_at"] == last_event.timestamp.isoformat()
+
+    def test_stats_unique_users_matches_db(self, client, sample_url, sample_user):
+        # same user clicks twice — unique count should be 1
+        client.get(f"/{sample_url['short_code']}?user_id={sample_user['id']}")
+        client.get(f"/{sample_url['short_code']}?user_id={sample_user['id']}")
+
+        stats = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        assert stats["unique_users"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Bulk upload  →  verify rows land in DB
+# ---------------------------------------------------------------------------
+
+class TestBulkIntegration:
+    def test_bulk_users_persist_to_db(self, client):
+        csv = "id,username,email,created_at\n201,bulkuser1,bulk1@x.com,2024-01-01 00:00:00\n202,bulkuser2,bulk2@x.com,2024-01-02 00:00:00\n"
+        data = {"file": (io.BytesIO(csv.encode()), "users.csv")}
+        client.post("/users/bulk", data=data, content_type="multipart/form-data")
+
+        assert User.select().where(User.email == "bulk1@x.com").count() == 1
+        assert User.select().where(User.email == "bulk2@x.com").count() == 1
+
+    def test_bulk_urls_persist_to_db(self, client, sample_user):
+        csv = (
+            "id,user_id,short_code,original_url,title,is_active,created_at,updated_at\n"
+            f"301,{sample_user['id']},blk01,https://bulk1.com,Bulk,TRUE,2024-01-01 00:00:00,2024-01-01 00:00:00\n"
+            f"302,{sample_user['id']},blk02,https://bulk2.com,Bulk2,FALSE,2024-01-02 00:00:00,2024-01-02 00:00:00\n"
+        )
+        data = {"file": (io.BytesIO(csv.encode()), "urls.csv")}
+        client.post("/urls/bulk", data=data, content_type="multipart/form-data")
+
+        assert Url.select().where(Url.short_code == "blk01").count() == 1
+        row = Url.get(Url.short_code == "blk02")
+        assert row.is_active is False
+
+
+# ---------------------------------------------------------------------------
+# Top URLs  →  ordering backed by DB click counts
+# ---------------------------------------------------------------------------
+
+class TestTopUrlsIntegration:
+    def test_top_urls_order_matches_db_click_counts(self, client, sample_user):
+        url_a = client.post("/urls", json={"original_url": "https://a.com", "user_id": sample_user["id"]}).get_json()
+        url_b = client.post("/urls", json={"original_url": "https://b.com", "user_id": sample_user["id"]}).get_json()
+
+        client.get(f"/{url_b['short_code']}")
+        client.get(f"/{url_b['short_code']}")
+        client.get(f"/{url_a['short_code']}")
+
+        results = client.get("/urls/top").get_json()
+        ids = [u["id"] for u in results]
+        assert ids.index(url_b["id"]) < ids.index(url_a["id"])
+
+        db_b = Event.select().where(Event.url_id == url_b["id"]).count()
+        db_a = Event.select().where(Event.url_id == url_a["id"]).count()
+        assert db_b == 2
+        assert db_a == 1
+
+
+# ---------------------------------------------------------------------------
+# Events summary  →  counts match DB
+# ---------------------------------------------------------------------------
+
+class TestEventsSummaryIntegration:
+    def test_summary_counts_match_db(self, client, sample_user, sample_url):
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "click"})
+        client.post("/events", json={"url_id": sample_url["id"], "user_id": sample_user["id"], "event_type": "view"})
+
+        summary = client.get("/events/summary").get_json()
+        db_total = Event.select().count()
+        assert summary["total"] == db_total
+        assert summary["by_type"]["click"] == 2
+        assert summary["by_type"]["view"] == 1
