@@ -1,8 +1,10 @@
 # URL Shortener — MLH PE Hackathon 2026
 
-A production-style URL shortener backend built for the MLH Production Engineering Hackathon. No frontend — pure REST API with users, shortened URLs, and event analytics.
+A production-grade URL shortener with a web frontend and REST API backend. Built for the MLH Production Engineering Hackathon.
 
-**Stack:** Flask · Peewee ORM · PostgreSQL · uv
+**Live:** [night-owls.duckdns.org](https://night-owls.duckdns.org)
+
+**Stack:** Flask · Peewee ORM · PostgreSQL · uv · Nginx · Docker Compose
 
 ---
 
@@ -10,21 +12,18 @@ A production-style URL shortener backend built for the MLH Production Engineerin
 
 ```mermaid
 flowchart LR
-    Client["Client - curl / app / browser"]
+    Browser["Browser"] --> Frontend["Frontend\nnight-owls.duckdns.org"]
+    Client["API Client\ncurl / app"] --> Routes
     subgraph Flask["Flask App (port 5000)"]
-        Routes["Routes: /users /urls /events /health /metrics"]
+        Frontend --> Routes["Routes\n/users /urls /events\n/health /metrics"]
     end
     subgraph DB["PostgreSQL"]
         Users["users table"]
         URLs["urls table"]
         Events["events table"]
     end
-    Seed["load_seed.py - CSV to DB"]
-
-    Client -- "HTTP request" --> Routes
-    Routes -- "JSON response" --> Client
     Routes -- "Peewee ORM" --> DB
-    Seed -.-> DB
+    Seed["load_seed.py\nCSV to DB"] -.-> DB
 ```
 
 ---
@@ -49,8 +48,8 @@ flowchart LR
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/sonephyo/PE-Hackathon-Template-2026.git
-cd PE-Hackathon-Template-2026
+git clone https://github.com/sonephyo/NightOwls-PE-Hackathon-2026.git
+cd NightOwls-PE-Hackathon-2026
 
 # 2. Install dependencies
 uv sync
@@ -60,7 +59,6 @@ createdb hackathon_db
 
 # 4. Configure environment
 cp .env.example .env
-# Edit .env if your DB credentials differ from the defaults
 
 # 5. Load seed data
 uv run load_seed.py
@@ -68,7 +66,7 @@ uv run load_seed.py
 # 6. Run the server
 uv run run.py
 
-# 7. Verify it's running
+# 7. Verify
 curl http://localhost:5000/health
 # → {"status":"ok"}
 ```
@@ -80,38 +78,50 @@ curl http://localhost:5000/health
 ```
 .
 ├── app/
-│   ├── __init__.py          # App factory (create_app)
-│   ├── database.py          # DB connection, BaseModel, teardown hooks
-│   ├── models/
-│   │   └── __init__.py      # Register models here
-│   └── routes/
-│       └── __init__.py      # Register blueprints here
+│   ├── __init__.py          # App factory, error handlers
+│   ├── database.py          # DB connection, BaseModel
+│   ├── models/              # User, URL, Event models
+│   ├── routes/              # API blueprints
+│   └── templates/           # Frontend HTML
 ├── docs/                    # Full documentation
 │   ├── api.md               # API endpoint reference
-│   ├── architecture.md      # Architecture diagram and overview
+│   ├── architecture.md      # Architecture overview
 │   ├── deploy.md            # Deploy and rollback guide
 │   ├── troubleshooting.md   # Common issues and fixes
 │   ├── config.md            # Environment variable reference
 │   ├── runbooks.md          # Incident response runbooks
 │   ├── decision-log.md      # Technical decision log
-│   └── capacity-plan.md     # Capacity and scaling plan
-├── users.csv                # Seed data — users
-├── urls.csv                 # Seed data — shortened URLs
-├── events.csv               # Seed data — analytics events
-├── load_seed.py             # Script to load CSV seed data into DB
+│   ├── capacity-plan.md     # Capacity and scaling plan
+│   └── screenshots/         # Evidence screenshots
+├── error-handling/          # Error handling documentation
+│   ├── README.md            # Overview and quick reference
+│   ├── status-codes.md      # HTTP status codes
+│   ├── failure-modes.md     # Failure scenarios and recovery
+│   └── validation-rules.md  # Input validation rules
+├── reports/                 # Performance and incident reports
+│   ├── bottleneck-analysis.md
+│   ├── incident-response-bronze.md
+│   ├── incident-response-silver.md
+│   └── incident-response-gold.md
+├── monitoring/              # Prometheus, Grafana, Alertmanager
+├── nginx/                   # Nginx load balancer config
+├── tests/                   # Unit and integration tests
+├── users.csv                # Seed data
+├── urls.csv                 # Seed data
+├── events.csv               # Seed data
+├── load_seed.py             # Load CSV seed data into DB
+├── docker-compose.yml       # Multi-container deployment
+├── Dockerfile               # Container definition
+├── autoscaler.py            # Auto-scaling logic
+├── load_test.js             # k6 load test scripts
 ├── .env.example             # Environment variable template
-├── .gitignore
-├── .python-version          # Python version pin for uv
-├── pyproject.toml           # Project metadata and dependencies
-├── run.py                   # Entry point — use `uv run run.py`
-└── README.md
+├── pyproject.toml           # Project metadata
+└── run.py                   # Entry point
 ```
 
 ---
 
 ## Environment Variables
-
-Copy `.env.example` to `.env` and update as needed:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -120,30 +130,13 @@ Copy `.env.example` to `.env` and update as needed:
 | `DATABASE_PORT` | `5432` | PostgreSQL port |
 | `DATABASE_USER` | `postgres` | PostgreSQL username |
 | `DATABASE_PASSWORD` | `postgres` | PostgreSQL password |
-
----
-
-## Seed Data
-
-The repo includes three CSV files used to pre-populate the database:
-
-| File | Description |
-|---|---|
-| `users.csv` | Sample user accounts |
-| `urls.csv` | Sample shortened URLs |
-| `events.csv` | Sample analytics events |
-
-Load them all at once:
-
-```bash
-uv run load_seed.py
-```
+| `FLASK_DEBUG` | `0` | Set to `1` for debug mode |
 
 ---
 
 ## API Endpoints
 
-Full API documentation is in [`docs/api.md`](docs/api.md). Quick reference:
+Full docs in [`docs/api.md`](docs/api.md). Quick reference:
 
 | Method | Path | Description |
 |---|---|---|
@@ -163,13 +156,26 @@ Full API documentation is in [`docs/api.md`](docs/api.md). Quick reference:
 | `GET` | `/<short_code>` | Redirect to original URL |
 | `GET` | `/events` | List all analytics events |
 | `POST` | `/events` | Create an event |
-| `GET` | `/metrics` | CPU/RAM usage metrics |
+| `GET` | `/metrics` | CPU/RAM metrics |
+
+---
+
+## Error Handling
+
+All errors return JSON. See [`error-handling/`](error-handling/) for full docs.
+
+| Status | Meaning |
+|---|---|
+| `200` | Success |
+| `201` | Created |
+| `302` | Redirect |
+| `400` | Bad input |
+| `404` | Not found / inactive URL |
+| `500` | Server error |
 
 ---
 
 ## Documentation
-
-All docs are in the [`docs/`](docs/) folder and cover Bronze through Gold tier:
 
 - [API Reference](docs/api.md)
 - [Architecture](docs/architecture.md)
@@ -198,5 +204,4 @@ All docs are in the [`docs/`](docs/) folder and cover Bronze through Gold tier:
 
 - **Event:** MLH Production Engineering Hackathon 2026
 - **Dates:** April 3–5, 2026
-- **Docs track:** Bronze → Silver → Gold
-- **Repo:** [sonephyo/PE-Hackathon-Template-2026](https://github.com/sonephyo/PE-Hackathon-Template-2026)
+- **Repo:** [sonephyo/NightOwls-PE-Hackathon-2026](https://github.com/sonephyo/NightOwls-PE-Hackathon-2026)
