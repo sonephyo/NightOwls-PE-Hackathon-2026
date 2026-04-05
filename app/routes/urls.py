@@ -379,16 +379,16 @@ def redirect_url(short_code):
         except Url.DoesNotExist:
             _cache_delete(short_code)
             return jsonify({"error": "URL not found"}), 404
-        # event_user_id = _resolve_event_user_id()
-        # with db.atomic():
-        #     Event.create(
-        #         url_id=cached_id,
-        #         user_id=event_user_id,
-        #         event_type="click",
-        #         timestamp=datetime.now(),
-        #         details=None,
-        #     )
-        #     redirects_total.inc()
+        event_user_id = _resolve_event_user_id()
+        with db.atomic():
+            Event.create(
+                url_id=cached_id,
+                user_id=event_user_id,
+                event_type="click",
+                timestamp=datetime.now(),
+                details=None,
+            )
+            redirects_total.inc()
         cache_hits_total.inc()
         log.info("redirect.cache_hit", short_code=short_code)
         return redirect(cached_url, code=302)
@@ -401,16 +401,16 @@ def redirect_url(short_code):
 
         _cache_set(short_code, url.id, url.original_url)
 
-        # event_user_id = _resolve_event_user_id()
-        # with db.atomic():
-        #     Event.create(
-        #         url_id=url.id,
-        #         user_id=event_user_id,
-        #         event_type="click",
-        #         timestamp=datetime.now(),
-        #         details=None,
-        #     )
-        #     redirects_total.inc()
+        event_user_id = _resolve_event_user_id()
+        with db.atomic():
+            Event.create(
+                url_id=url.id,
+                user_id=event_user_id,
+                event_type="click",
+                timestamp=datetime.now(),
+                details=None,
+            )
+            redirects_total.inc()
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
         log.warning("redirect.not_found", short_code=short_code)
