@@ -1,366 +1,202 @@
-# MLH PE Hackathon — URL Shortener
+# URL Shortener — MLH PE Hackathon 2026
 
-A Flask app that shortens URLs, with a full monitoring stack (Prometheus, Loki, Grafana) included.
+A production-style URL shortener backend built for the MLH Production Engineering Hackathon. No frontend — pure REST API with users, shortened URLs, and event analytics.
+
+**Stack:** Flask · Peewee ORM · PostgreSQL · uv
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Client["Client - curl / app / browser"]
+    subgraph Flask["Flask App (port 5000)"]
+        Routes["Routes: /users /urls /events /health /metrics"]
+    end
+    subgraph DB["PostgreSQL"]
+        Users["users table"]
+        URLs["urls table"]
+        Events["events table"]
+    end
+    Seed["load_seed.py - CSV to DB"]
+
+    Client -- "HTTP request" --> Routes
+    Routes -- "JSON response" --> Client
+    Routes -- "Peewee ORM" --> DB
+    Seed -.-> DB
+```
 
 ---
 
 ## Prerequisites
 
-**1. Docker Desktop** — download from https://www.docker.com/products/docker-desktop and install it. Make sure it's open and running before you continue (look for the whale icon in your menu bar).
+- **uv** — Python package manager (handles versions, virtualenvs, dependencies)
 
-**2. uv** (Python package manager)
+  ```bash
+  # macOS / Linux
+  curl -LsSf https://astral.sh/uv/install.sh | sh
 
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
+  # Windows (PowerShell)
+  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+  ```
 
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-After installing, close and reopen your terminal.
+- **PostgreSQL** running locally (Docker or local install both work)
 
 ---
 
-## Running the App
+## Quick Start
 
 ```bash
-# 1. Clone and enter the project
-git clone <repo-url>
+# 1. Clone the repo
+git clone https://github.com/sonephyo/PE-Hackathon-Template-2026.git
 cd PE-Hackathon-Template-2026
 
-# 2. Install Python dependencies
+# 2. Install dependencies
 uv sync
 
-# 3. Start everything
-docker compose up --build
-```
+# 3. Create the database
+createdb hackathon_db
 
-The first run downloads Docker images — this takes a minute. Leave the terminal running.
+# 4. Configure environment
+cp .env.example .env
+# Edit .env if your DB credentials differ from the defaults
 
-**Verify it's working** — open a new terminal:
+# 5. Load seed data
+uv run load_seed.py
 
-```bash
-curl http://localhost:8000/health
-# → {"status": "ok"}
-```
+# 6. Run the server
+uv run run.py
 
----
-
-## Stopping
-
-```bash
-# Ctrl+C in the Docker terminal, then:
-docker compose down
+# 7. Verify it's running
+curl http://localhost:5000/health
+# → {"status":"ok"}
 ```
 
 ---
 
-## Service URLs
+## Project Structure
 
-| Service | URL | Login |
+```
+.
+├── app/
+│   ├── __init__.py          # App factory (create_app)
+│   ├── database.py          # DB connection, BaseModel, teardown hooks
+│   ├── models/
+│   │   └── __init__.py      # Register models here
+│   └── routes/
+│       └── __init__.py      # Register blueprints here
+├── docs/                    # Full documentation
+│   ├── api.md               # API endpoint reference
+│   ├── architecture.md      # Architecture diagram and overview
+│   ├── deploy.md            # Deploy and rollback guide
+│   ├── troubleshooting.md   # Common issues and fixes
+│   ├── config.md            # Environment variable reference
+│   ├── runbooks.md          # Incident response runbooks
+│   ├── decision-log.md      # Technical decision log
+│   └── capacity-plan.md     # Capacity and scaling plan
+├── users.csv                # Seed data — users
+├── urls.csv                 # Seed data — shortened URLs
+├── events.csv               # Seed data — analytics events
+├── load_seed.py             # Script to load CSV seed data into DB
+├── .env.example             # Environment variable template
+├── .gitignore
+├── .python-version          # Python version pin for uv
+├── pyproject.toml           # Project metadata and dependencies
+├── run.py                   # Entry point — use `uv run run.py`
+└── README.md
+```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and update as needed:
+
+| Variable | Default | Description |
 |---|---|---|
-| App | http://localhost:8000 | — |
-| Grafana (logs & metrics) | http://localhost:3000 | admin / admin |
-| Prometheus | http://localhost:9090 | — |
+| `DATABASE_NAME` | `hackathon_db` | PostgreSQL database name |
+| `DATABASE_HOST` | `localhost` | PostgreSQL host |
+| `DATABASE_PORT` | `5432` | PostgreSQL port |
+| `DATABASE_USER` | `postgres` | PostgreSQL username |
+| `DATABASE_PASSWORD` | `postgres` | PostgreSQL password |
 
 ---
 
-## Viewing Logs in Grafana
+## Seed Data
 
-1. Open http://localhost:3000 → **Explore**
-2. Select **Loki** from the dropdown
-3. Query: `{service="app"}` → press **Run query**
+The repo includes three CSV files used to pre-populate the database:
 
-Filter to warnings only: `{service="app"} | json | level="warning"`
+| File | Description |
+|---|---|
+| `users.csv` | Sample user accounts |
+| `urls.csv` | Sample shortened URLs |
+| `events.csv` | Sample analytics events |
 
----
-
-## Viewing Metrics in Grafana
-
-1. Open http://localhost:3000 → **Explore**
-2. Select **Prometheus**
-3. Example query: `rate(app_urls_created_total[1m])`
-
----
-
-## Troubleshooting
-
-**Docker won't start** — make sure Docker Desktop is open. Look for the whale icon in your menu bar.
-
-**`uv` command not found** — close and reopen your terminal after installing. If it still fails, restart your computer.
-
-**"Connection refused" on localhost:8000** — the app is still starting. Wait 10 seconds and try again.
-
-**Port already in use** — run `docker compose down`, then try again.
-
-**Code changes not showing** — rebuild with `docker compose up --build` (not just `up`).
-
----
-
-## Changes by Sriky
-
-### 1. Fixed CRLF line endings (`entrypoint.sh`, `Dockerfile`)
-Windows saves files with `\r\n` line endings. Linux inside Docker can't run shell scripts with `\r` characters — it would fail with `/bin/sh^M: not found`. Converted both files to LF and added `.gitattributes` to enforce this on future commits.
-
-### 2. Fixed PostgreSQL sequences after CSV seed
-When the database is seeded from CSV files with explicit IDs (1, 2, 3...), PostgreSQL's auto-increment counter doesn't advance. So the first `POST /urls` would crash with `duplicate key violates unique constraint`. Fixed by resetting all three sequences (`users`, `urls`, `events`) at the end of `seed.py`.
-
-### 3. Added `GET /urls/code/<short_code>` endpoint
-Added a new endpoint to look up a URL record by its short code directly instead of only by numeric DB id.
+Load them all at once:
 
 ```bash
-curl http://localhost:8000/urls/code/2Ngd3j
+uv run load_seed.py
 ```
 
-### 4. Built a frontend UI (`app/templates/index.html`)
-Added a browser-based interface at `http://localhost:8000` — paste a URL, get a short link, copy it, click it. Shows an **existing** badge if the URL was already shortened.
+---
 
-### 5. URL deduplication in `POST /urls`
-`POST /urls` now returns the existing record (`200`) if the URL was already shortened instead of creating a duplicate. New URLs still return `201`.
+## API Endpoints
 
-### 6. Redis caching (Gold tier)
-Added Redis in front of PostgreSQL for the redirect endpoint. Popular short codes are cached in memory with a 5-minute TTL — cache hits skip the DB entirely and return in under 1ms.
+Full API documentation is in [`docs/api.md`](docs/api.md). Quick reference:
 
-```
-GET /<short_code>
-  → Redis hit  → redirect (< 1ms, no DB)
-  → Redis miss → PostgreSQL → cache → redirect
-```
-
-### 7. Nginx load balancer tuning
-Replaced default nginx config with a production-tuned version:
-- `least_conn` load balancing — sends requests to the least busy replica
-- `worker_connections 4096` + `backlog 4096` — handles sudden connection spikes
-- `worker_processes auto` — uses all CPU cores
-- `keepalive 32` — reuses upstream connections
-
-### 8. Gunicorn optimization (`entrypoint.sh`)
-Bumped from 2 to 4 workers with production flags:
-```sh
-gunicorn --workers 4 --timeout 30 --keep-alive 2 --max-requests 1000 --max-requests-jitter 50
-```
-- 4 workers = 4× parallel request handling per replica
-- `--max-requests 1000` restarts workers periodically to prevent memory leaks
-
-### 9. Docker Compose scaling (3 replicas)
-Increased app replicas from 2 to 3 (`deploy: replicas: 3`) giving 12 total Gunicorn worker slots behind nginx.
-
-### 10. Autoscaler (`autoscaler.py`)
-Added a Prometheus-driven autoscaler that scales app replicas up/down based on live traffic:
-- Scales **up** when redirect rate > 30 req/s OR CPU > 50%
-- Scales **down** after 3 consecutive low-load readings (prevents flapping)
-- Min 2 replicas at rest, max 6 under load
-
-```bash
-uv run autoscaler.py
-```
-
-### 11. Load tests (Bronze / Silver / Gold / Extreme)
-Added k6 load test scripts for all tiers:
-
-| Script | Users | Requirement |
+| Method | Path | Description |
 |---|---|---|
-| `load_test.js` | 50 | Bronze baseline |
-| `load_test_silver.js` | 200 | Silver — p95 < 3s |
-| `load_test_gold.js` | 500 | Gold — p95 < 3s, errors < 5% |
-| `load_test_extreme.js` | 1000 | Beyond quest — stress test |
-
-**Results:**
-
-| Tier | Users | p95 | Error Rate |
-|---|---|---|---|
-| Bronze | 50 | 16ms | 0% |
-| Silver | 200 | 17.8ms | 0% |
-| Gold | 500 | 64ms | 0% |
-| Extreme | 1000 | 588ms | 0% |
-
----
-
-## For Developers Adding Features
-
-See the [Observability Guide](#observability-guide) below for how to add logs and metrics to your routes.
-
-### Adding Logs
-
-Add this at the top of every route file:
-
-```python
-import structlog
-log = structlog.get_logger(__name__)
-```
-
-Then call it in your handlers:
-
-```python
-log.info("url.shortened", short_code="abc123", user_id=1)
-log.warning("url.not_found", short_code="abc123")
-log.error("db.write_failed", exc_info=True)
-```
-
-### Incrementing Metrics Counters
-
-```python
-from app.routes.metrics import urls_created_total, redirects_total
-
-urls_created_total.inc()  # after a URL is successfully created
-redirects_total.inc()     # after a redirect is served
-```
-
-### Registering a New Blueprint
-
-Open `app/routes/__init__.py` and add your blueprint:
-
-```python
-def register_routes(app):
-    from app.routes.metrics import metrics_bp
-    app.register_blueprint(metrics_bp)
-
-    from app.routes.urls import urls_bp  # your new blueprint
-    app.register_blueprint(urls_bp)
-```
+| `GET` | `/health` | Health check |
+| `GET` | `/users` | List all users |
+| `GET` | `/users/<id>` | Get user by ID |
+| `POST` | `/users` | Create a user |
+| `POST` | `/users/bulk` | Bulk import users from CSV |
+| `PUT` | `/users/<id>` | Update a user |
+| `DELETE` | `/users/<id>` | Delete a user |
+| `GET` | `/urls` | List all URLs |
+| `GET` | `/urls/<id>` | Get URL by ID |
+| `GET` | `/urls/active` | List active URLs only |
+| `POST` | `/urls` | Create a shortened URL |
+| `PUT` | `/urls/<id>` | Update a URL |
+| `DELETE` | `/urls/<id>` | Delete a URL |
+| `GET` | `/<short_code>` | Redirect to original URL |
+| `GET` | `/events` | List all analytics events |
+| `POST` | `/events` | Create an event |
+| `GET` | `/metrics` | CPU/RAM usage metrics |
 
 ---
 
-## Error Handling
+## Documentation
 
-All errors are returned as JSON — the app never returns an HTML error page.
+All docs are in the [`docs/`](docs/) folder and cover Bronze through Gold tier:
 
-### 404 Not Found
-
-Returned when a route or resource does not exist.
-
-**Unmatched route** (registered in `app/__init__.py`):
-```json
-HTTP 404
-{ "error": "not found" }
-```
-
-**Resource not found** (e.g. `GET /urls/999`):
-```json
-HTTP 404
-{ "error": "URL not found" }
-```
-
-**Inactive short code** (redirect to a deactivated URL):
-```json
-HTTP 410
-{ "error": "URL is inactive" }
-```
-
-### 500 Internal Server Error
-
-Returned when an unhandled exception occurs anywhere in the app (registered in `app/__init__.py`). The exception is logged via structlog before responding.
-
-```json
-HTTP 500
-{ "error": "internal server error" }
-```
-
-The full stack trace appears in the application logs (visible in Grafana → Loki, query `{service="app"} | json | level="error"`).
-
-### 400 Bad Request
-
-Returned by individual route handlers when required fields are missing or the request body is invalid.
-
-```json
-HTTP 400
-{ "error": "original_url required" }
-```
-
-```json
-HTTP 400
-{ "error": "Invalid data" }
-```
+- [API Reference](docs/api.md)
+- [Architecture](docs/architecture.md)
+- [Deploy Guide](docs/deploy.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Configuration](docs/config.md)
+- [Runbooks](docs/runbooks.md)
+- [Decision Log](docs/decision-log.md)
+- [Capacity Plan](docs/capacity-plan.md)
 
 ---
 
-## Failure Manual
+## Team
 
-What happens when things break, and what to do about it.
-
-### App container crashes or is killed
-
-**What happens:** Docker detects the unexpected exit and automatically restarts the container (`restart: unless-stopped` in `docker-compose.yml`). Downtime is a few seconds.
-
-**How to simulate:**
-```bash
-docker kill pe-hackathon-template-2026-app-1
-```
-
-**How to verify it recovered:**
-```bash
-curl http://localhost:8000/health
-# → {"status": "ok"}
-```
+| Name | Track |
+|---|---|
+| Aaron | Reliability |
+| Sone | Observability |
+| JJ | Scalability |
+| Sriky | Scalability |
+| Cameron | Documentation |
 
 ---
 
-### Database goes down
+## Hackathon
 
-**What happens:** The app is still running but every request that touches the DB returns:
-```json
-HTTP 500
-{ "error": "internal server error" }
-```
-The full exception is logged (visible in Grafana → Loki).
-
-**How to simulate:**
-```bash
-docker stop pe-hackathon-template-2026-db-1
-```
-
-**How to recover:**
-```bash
-docker start pe-hackathon-template-2026-db-1
-```
-The app reconnects automatically on the next request — no restart needed.
-
----
-
-### App fails to start (DB not ready)
-
-**What happens:** If the DB isn't healthy when the app starts, `seed.py` fails and the container exits. Docker restarts it. This repeats until the DB is ready (the `depends_on: condition: service_healthy` in `docker-compose.yml` prevents this in normal operation).
-
-**How to identify:** Run `docker compose logs app` and look for connection refused errors.
-
-**How to fix:** Let `docker compose up` finish fully before sending requests. The healthcheck polls every 5 seconds up to 10 times.
-
----
-
-### App process dies inside the container (OOM / unhandled signal)
-
-**What happens:** Same as a crash — Docker restarts the container automatically. Gunicorn runs with 2 workers, so if one worker dies the other continues serving requests while Docker restarts.
-
----
-
-### Bad request data sent by a client
-
-**What happens:** The app returns a clean JSON error with an appropriate status code — it does not crash.
-
-**How to simulate:**
-```bash
-# Missing required field
-curl -s -X POST http://localhost:8000/urls \
-  -H "Content-Type: application/json" \
-  -d '{}' 
-# → {"error": "original_url required"}
-
-# Non-existent resource
-curl -s http://localhost:8000/urls/999999
-# → {"error": "URL not found"}
-
-# Completely unknown route
-curl -s http://localhost:8000/doesnotexist
-# → {"error": "not found"}
-```
-
----
-
-## Gold Tier — Bottleneck Report
-
-**What was slow:** Under 500 concurrent users, the database was the bottleneck — every redirect hit PostgreSQL to look up the short code, which saturated DB connections and pushed p95 response times above 3 seconds with a ~5% error rate.
-
-**What we fixed:** Added Redis caching in front of the database. Popular short codes are stored in memory with a 5-minute TTL, so repeated redirects skip the DB entirely — the cache hit path is a single in-memory lookup taking under 1ms vs ~20ms for a DB query.
-
-**Result:** At 500 concurrent users, p95 dropped well under 3 seconds and error rate stayed below 5%, because only cold cache misses (first-time lookups) ever reach PostgreSQL.
+- **Event:** MLH Production Engineering Hackathon 2026
+- **Dates:** April 3–5, 2026
+- **Docs track:** Bronze → Silver → Gold
+- **Repo:** [sonephyo/PE-Hackathon-Template-2026](https://github.com/sonephyo/PE-Hackathon-Template-2026)
