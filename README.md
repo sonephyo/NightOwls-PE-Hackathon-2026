@@ -180,6 +180,14 @@ All docs are in the [`docs/`](docs/) folder and cover Bronze through Gold tier:
 - [Decision Log](docs/decision-log.md)
 - [Capacity Plan](docs/capacity-plan.md)
 
+### Error Handling
+
+Detailed error handling documentation is in [`error-handling/`](error-handling/):
+
+- [Status Codes](error-handling/status-codes.md)
+- [Failure Modes](error-handling/failure-modes.md)
+- [Validation Rules](error-handling/validation-rules.md)
+
 ---
 
 ## Team
