@@ -204,6 +204,19 @@ class TestUpdateUserIntegration:
         row = User.get_by_id(user_id)
         assert row.email == "gettest@x.com"
 
+    def test_update_email_persists_to_db(self, client, sample_user):
+        client.put(f"/users/{sample_user['id']}", json={"email": "new@example.com"})
+
+        row = User.get_by_id(sample_user["id"])
+        assert row.email == "new@example.com"
+
+    def test_get_user_api_matches_db(self, client, sample_user):
+        resp = client.get(f"/users/{sample_user['id']}")
+        api_data = resp.get_json()
+        row = User.get_by_id(sample_user["id"])
+        assert api_data["username"] == row.username
+        assert api_data["email"] == row.email
+
 
 # ---------------------------------------------------------------------------
 # Events  →  additional DB checks
@@ -230,3 +243,49 @@ class TestEventIntegration:
         row = Event.get_by_id(event_id)
         assert row.event_type == "share"
         assert row.url_id_id == sample_url["id"]
+
+    def test_event_user_id_stored_in_db(self, client, sample_user, sample_url):
+        resp = client.post("/events", json={
+            "url_id": sample_url["id"],
+            "user_id": sample_user["id"],
+            "event_type": "click",
+        })
+        event_id = resp.get_json()["id"]
+
+        row = Event.get_by_id(event_id)
+        assert row.user_id_id == sample_user["id"]
+
+    def test_event_without_user_stored_in_db(self, client, sample_url):
+        resp = client.post("/events", json={
+            "url_id": sample_url["id"],
+            "event_type": "view",
+        })
+        event_id = resp.get_json()["id"]
+
+        row = Event.get_by_id(event_id)
+        assert row.user_id_id is None
+
+
+# ---------------------------------------------------------------------------
+# URL stats  →  DB-backed counts
+# ---------------------------------------------------------------------------
+
+class TestUrlStatsIntegration:
+    def test_stats_click_count_matches_db(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        client.get(f"/{sample_url['short_code']}")
+
+        stats = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        db_count = Event.select().where(
+            (Event.url_id == sample_url["id"]) & (Event.event_type == "click")
+        ).count()
+        assert stats["click_count"] == db_count == 2
+
+    def test_stats_last_clicked_at_matches_db(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+
+        stats = client.get(f"/urls/{sample_url['id']}/stats").get_json()
+        last_event = Event.select().where(
+            Event.url_id == sample_url["id"]
+        ).order_by(Event.timestamp.desc()).first()
+        assert stats["last_clicked_at"] == last_event.timestamp.isoformat()
