@@ -193,7 +193,7 @@ def get_url(id):
     try:
         short_code_url = Url.get(Url.short_code == str(id))
         if not short_code_url.is_active:
-            return jsonify({"error": "URL is inactive"}), 410
+            return jsonify({"error": "URL not found"}), 404
         return jsonify(url_to_dict(short_code_url))
     except Url.DoesNotExist:
         return err
@@ -204,7 +204,7 @@ def get_url_by_short_code(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
-            return jsonify({"error": "URL is inactive"}), 410
+            return jsonify({"error": "URL not found"}), 404
         return jsonify(url_to_dict(url))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
@@ -377,7 +377,7 @@ def redirect_url(short_code):
             url = Url.get_by_id(cached_id)
             if not url.is_active:
                 _cache_delete(short_code)
-                return jsonify({"error": "URL is inactive"}), 410
+                return jsonify({"error": "URL not found"}), 404
         except Url.DoesNotExist:
             _cache_delete(short_code)
             return jsonify({"error": "URL not found"}), 404
@@ -399,7 +399,7 @@ def redirect_url(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
-            return jsonify({"error": "URL is inactive"}), 410
+            return jsonify({"error": "URL not found"}), 404
 
         _cache_set(short_code, url.id, url.original_url)
 

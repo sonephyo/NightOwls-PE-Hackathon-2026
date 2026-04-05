@@ -188,10 +188,10 @@ class TestGetUrlByShortCode:
         data = client.get(f"/urls/{sample_url['short_code']}").get_json()
         assert "is_active" in data
 
-    def test_returns_410_for_inactive_short_code_lookup(self, client, sample_url):
+    def test_returns_404_for_inactive_short_code_lookup(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
         resp = client.get(f"/urls/{sample_url['short_code']}")
-        assert resp.status_code == 410
+        assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -482,10 +482,10 @@ class TestRedirectUrl:
         assert resp.status_code == 302
         assert sample_url["original_url"] in resp.headers["Location"]
 
-    def test_returns_410_for_inactive_url(self, client, sample_url):
+    def test_returns_404_for_inactive_url(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
         resp = client.get(f"/{sample_url['short_code']}")
-        assert resp.status_code == 410
+        assert resp.status_code == 404
 
     def test_returns_404_for_unknown_short_code(self, client):
         resp = client.get("/doesnotexist")
@@ -509,13 +509,13 @@ class TestRedirectUrl:
         before = self._redirects_total(client)
         resp = client.get(f"/{sample_url['short_code']}")
         after = self._redirects_total(client)
-        assert resp.status_code == 410
+        assert resp.status_code == 404
         assert after == before
 
     def test_inactive_url_short_circuits_user_id_validation(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
         resp = client.get(f"/{sample_url['short_code']}?user_id=not-an-int")
-        assert resp.status_code == 410
+        assert resp.status_code == 404
         events = client.get("/events").get_json()
         assert len(events) == 0
 
