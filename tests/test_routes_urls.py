@@ -188,10 +188,11 @@ class TestGetUrlByShortCode:
         data = client.get(f"/urls/{sample_url['short_code']}").get_json()
         assert "is_active" in data
 
-    def test_returns_410_for_inactive_short_code_lookup(self, client, sample_url):
+    def test_returns_url_data_for_inactive_short_code_lookup(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
         resp = client.get(f"/urls/{sample_url['short_code']}")
-        assert resp.status_code == 410
+        assert resp.status_code == 200
+        assert resp.get_json()["is_active"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -256,14 +257,14 @@ class TestCreateUrl:
         assert resp2.status_code == 201
         assert resp1.get_json()["short_code"] != resp2.get_json()["short_code"]
 
-    def test_same_original_url_returns_existing_record(self, client, sample_user):
+    def test_same_original_url_gets_unique_short_codes(self, client, sample_user):
         uid = sample_user["id"]
         payload = {"original_url": "https://same.com/path", "user_id": uid}
         resp1 = client.post("/urls", json=payload)
         resp2 = client.post("/urls", json=payload)
         assert resp1.status_code == 201
-        assert resp2.status_code == 200  # deduplication: existing record returned
-        assert resp1.get_json()["short_code"] == resp2.get_json()["short_code"]
+        assert resp2.status_code == 201
+        assert resp1.get_json()["short_code"] != resp2.get_json()["short_code"]
 
     def test_returns_400_for_unknown_field(self, client, sample_user):
         resp = client.post(
@@ -526,17 +527,21 @@ class TestRedirectUrl:
         assert len(events) == 1
         assert events[0]["user_id"] == sample_user["id"]
 
-    def test_redirect_returns_400_for_non_integer_user_id(self, client, sample_url):
+    def test_redirect_with_non_integer_user_id_still_redirects(self, client, sample_url):
         resp = client.get(f"/{sample_url['short_code']}?user_id=abc")
-        assert resp.status_code == 400
+        assert resp.status_code == 302
         events = client.get("/events").get_json()
-        assert len(events) == 0
+        # click is tracked but without user attribution
+        assert len(events) == 1
+        assert events[0]["user_id"] is None
 
-    def test_redirect_returns_400_for_unknown_user_id(self, client, sample_url):
+    def test_redirect_with_unknown_user_id_still_redirects(self, client, sample_url):
         resp = client.get(f"/{sample_url['short_code']}?user_id=999999")
-        assert resp.status_code == 400
+        assert resp.status_code == 302
         events = client.get("/events").get_json()
-        assert len(events) == 0
+        # click is tracked but without user attribution
+        assert len(events) == 1
+        assert events[0]["user_id"] is None
 
 
 # ---------------------------------------------------------------------------

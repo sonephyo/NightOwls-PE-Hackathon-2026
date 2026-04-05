@@ -44,17 +44,25 @@ def _get_redis():
 _CACHE_TTL = 300  # seconds — cached redirects expire after 5 minutes
 
 def _cache_get(short_code):
+    """Return (url_id, original_url) from cache, or (None, None) on miss."""
     try:
         r = _get_redis()
-        return r.get(f"redirect:{short_code}") if r else None
+        if not r:
+            return None, None
+        raw = r.get(f"redirect:{short_code}")  # pragma: no cover
+        if raw is None:  # pragma: no cover
+            return None, None  # pragma: no cover
+        # Stored as "url_id|original_url"
+        sep = raw.index("|")  # pragma: no cover
+        return int(raw[:sep]), raw[sep + 1:]  # pragma: no cover
     except Exception:  # pragma: no cover
-        return None  # pragma: no cover
+        return None, None  # pragma: no cover
 
-def _cache_set(short_code, original_url):
+def _cache_set(short_code, url_id, original_url):
     try:
         r = _get_redis()
         if r:
-            r.setex(f"redirect:{short_code}", _CACHE_TTL, original_url)  # pragma: no cover
+            r.setex(f"redirect:{short_code}", _CACHE_TTL, f"{url_id}|{original_url}")  # pragma: no cover
     except Exception:  # pragma: no cover
         pass  # pragma: no cover
 
@@ -190,8 +198,6 @@ def get_url(id):
 def get_url_by_short_code(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
-        if not url.is_active:
-            return jsonify({"error": "URL is inactive"}), 410
         return jsonify(url_to_dict(url))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
@@ -233,12 +239,6 @@ def create_url():
         return jsonify({"error": "title must be a string"}), 400
     if 'is_active' in data and not isinstance(data['is_active'], bool):
         return jsonify({"error": "is_active must be a boolean"}), 400
-
-    # Deduplication: return existing record if URL already shortened
-    existing = Url.get_or_none(Url.original_url == original_url)
-    if existing:
-        log.info("url.already_exists", short_code=existing.short_code)
-        return jsonify(url_to_dict(existing)), 200
 
     if 'short_code' in data:
         explicit_code = data.get('short_code')
@@ -349,13 +349,35 @@ def bulk_upload_urls():
 
 @urls_bp.route("/<short_code>", methods=["GET"])
 def redirect_url(short_code):
+    raw_user_id = request.args.get('user_id')
+
+    def _resolve_event_user_id():
+        if raw_user_id is None:
+            return None
+        try:
+            uid = int(raw_user_id)
+            if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == uid).exists():
+                return None  # unknown user — track click without attribution
+            return uid
+        except (TypeError, ValueError):
+            return None  # non-integer user_id — track click without attribution
+
     # --- Gold tier: Redis cache check ---
-    cached = _cache_get(short_code)
-    if cached:  # pragma: no cover
+    cached_id, cached_url = _cache_get(short_code)
+    if cached_id is not None:  # pragma: no cover
+        event_user_id = _resolve_event_user_id()
+        with db.atomic():
+            Event.create(
+                url_id=cached_id,
+                user_id=event_user_id,
+                event_type="click",
+                timestamp=datetime.now(),
+                details=None,
+            )
+            redirects_total.inc()
         cache_hits_total.inc()
-        redirects_total.inc()
         log.info("redirect.cache_hit", short_code=short_code)
-        return redirect(cached, code=302)
+        return redirect(cached_url, code=302)
 
     # --- Cache miss: query the database ---
     try:
@@ -363,18 +385,9 @@ def redirect_url(short_code):
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
 
-        _cache_set(short_code, url.original_url)
+        _cache_set(short_code, url.id, url.original_url)
 
-        raw_user_id = request.args.get('user_id')
-        event_user_id = None
-        if raw_user_id is not None:
-            try:
-                event_user_id = int(raw_user_id)
-            except (TypeError, ValueError):
-                return jsonify({"error": "user_id must be an integer"}), 400
-            if not Url.user_id.rel_model.select().where(Url.user_id.rel_model.id == event_user_id).exists():
-                return jsonify({"error": "invalid user_id"}), 400
-
+        event_user_id = _resolve_event_user_id()
         with db.atomic():
             Event.create(
                 url_id=url.id,

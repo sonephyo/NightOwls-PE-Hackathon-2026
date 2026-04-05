@@ -17,12 +17,19 @@ they can be called whether or not a connection is already open.
 import io
 import pytest
 from peewee import SqliteDatabase
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 
 # ---------------------------------------------------------------------------
 # App / database setup
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_redis():
+    """Disable Redis caching for all tests so click counts are always accurate."""
+    with patch("app.routes.urls._get_redis", return_value=None):
+        yield
+
 
 @pytest.fixture(scope="session")
 def app(tmp_path_factory):
