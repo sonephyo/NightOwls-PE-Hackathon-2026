@@ -75,6 +75,14 @@ jobs:
       - name: Smoke test /metrics
         run: curl -sf http://localhost:8000/metrics | grep 'app_cpu_usage_percent'
 
+      - name: Install k6
+        run: |
+          curl -sL https://github.com/grafana/k6/releases/download/v0.55.0/k6-v0.55.0-linux-amd64.tar.gz | tar xz --strip-components=1 k6-v0.55.0-linux-amd64/k6
+          sudo mv k6 /usr/local/bin/
+
+      - name: k6 smoke test (3 VUs, 15s — validates scripts run correctly)
+        run: k6 run --vus 3 --duration 15s --no-thresholds --env TARGET=http://localhost:8000 load_test.js
+
       - name: Tear down
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v

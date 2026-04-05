@@ -21,7 +21,7 @@ const shortCodes = [
   'yQSwT2', '3mgDRW', 'VgkwPM', 'H8r4XJ', 'afSvrh', 'ANQfSc'
 ];
 
-const BASE_URL = 'http://localhost:8000';
+const BASE_URL = __ENV.TARGET || 'http://localhost:8000';
 
 export default function () {
   const shortCode = shortCodes[Math.floor(Math.random() * shortCodes.length)];
@@ -31,7 +31,7 @@ export default function () {
   });
 
   check(response, {
-    'redirect or not found': (r) => r.status === 302 || r.status === 404 || r.status === 410,
+    'redirect or not found': (r) => r.status === 302 || r.status === 404,
     'response time < 3000ms': (r) => r.timings.duration < 3000,
   });
 

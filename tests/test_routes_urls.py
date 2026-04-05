@@ -108,6 +108,14 @@ class TestListUrls:
         ids = [r["id"] for r in results]
         assert ids == sorted(ids)
 
+    def test_filters_by_original_url(self, client, sample_user):
+        uid = sample_user["id"]
+        client.post("/urls", json={"original_url": "https://target.com", "user_id": uid})
+        client.post("/urls", json={"original_url": "https://other.com", "user_id": uid})
+        results = client.get("/urls?original_url=https://target.com").get_json()
+        assert len(results) == 1
+        assert results[0]["original_url"] == "https://target.com"
+
 
 # ---------------------------------------------------------------------------
 # GET /urls/<id>
@@ -375,6 +383,11 @@ class TestCreateUrl:
         )
         assert resp.status_code == 400
 
+    def test_create_response_includes_updated_at(self, client, sample_user):
+        resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": sample_user["id"]})
+        assert resp.status_code == 201
+        assert "updated_at" in resp.get_json()
+
     def test_created_url_is_retrievable(self, client, sample_user):
         resp = client.post(
             "/urls",
@@ -541,6 +554,19 @@ class TestRedirectUrl:
         # click is tracked but without user attribution
         assert len(events) == 1
         assert events[0]["user_id"] is None
+
+    def test_returns_404_for_deleted_url(self, client, sample_url):
+        short_code = sample_url["short_code"]
+        client.delete(f"/urls/{sample_url['id']}")
+        resp = client.get(f"/{short_code}")
+        assert resp.status_code == 404
+
+    def test_error_response_is_json_not_html(self, client):
+        resp = client.get("/thisdoesnotexist")
+        assert resp.status_code == 404
+        assert resp.get_json() is not None
+        assert "error" in resp.get_json()
+        assert "text/html" not in resp.content_type
 
 
 # ---------------------------------------------------------------------------
