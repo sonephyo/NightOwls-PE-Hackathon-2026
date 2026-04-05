@@ -189,6 +189,7 @@ All docs are in the [`docs/`](docs/) folder and cover Bronze through Gold tier:
 | Aaron | Reliability |
 | Sone | Observability |
 | JJ | Scalability |
+| Sriky | Scalability |
 | Cameron | Documentation |
 
 ---
