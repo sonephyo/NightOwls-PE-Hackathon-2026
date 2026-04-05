@@ -35,6 +35,7 @@ def _get_redis():
                 port=int(os.getenv("REDIS_PORT", 6379)),
                 decode_responses=True,
                 socket_connect_timeout=1,
+                socket_timeout=1,
             )
             _redis.ping()  # fail fast if Redis is not up
         except Exception:
@@ -365,6 +366,15 @@ def redirect_url(short_code):
     # --- Gold tier: Redis cache check ---
     cached_id, cached_url = _cache_get(short_code)
     if cached_id is not None:  # pragma: no cover
+        # Verify the URL is still active before redirecting from cache
+        try:
+            url = Url.get_by_id(cached_id)
+            if not url.is_active:
+                _cache_delete(short_code)
+                return jsonify({"error": "URL is inactive"}), 410
+        except Url.DoesNotExist:
+            _cache_delete(short_code)
+            return jsonify({"error": "URL not found"}), 404
         event_user_id = _resolve_event_user_id()
         with db.atomic():
             Event.create(
