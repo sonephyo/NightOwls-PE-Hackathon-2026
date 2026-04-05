@@ -113,9 +113,9 @@ jobs:
             docker compose pull --quiet || true
             docker compose up -d --build --remove-orphans
 
-            # Verify the app came back up (nginx proxies to app on port 8000)
+            # Verify the app came back up (nginx on port 80)
             for i in $(seq 1 20); do
-              if curl -sf http://localhost:8000/health; then
+              if curl -sf http://localhost:80/health; then
                 echo "Deploy successful"
                 exit 0
               fi
