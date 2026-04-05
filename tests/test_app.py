@@ -85,6 +85,11 @@ class TestMetrics:
         metrics = client.get("/metrics").data
         assert b"app_redirects_total" in metrics
 
+    def test_stress_endpoint_returns_200(self, client):
+        resp = client.get("/stress")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "done"
+
 
 # ---------------------------------------------------------------------------
 # Bad inputs — POST /events
