@@ -188,11 +188,10 @@ class TestGetUrlByShortCode:
         data = client.get(f"/urls/{sample_url['short_code']}").get_json()
         assert "is_active" in data
 
-    def test_returns_url_data_for_inactive_short_code_lookup(self, client, sample_url):
+    def test_returns_410_for_inactive_short_code_lookup(self, client, sample_url):
         client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
         resp = client.get(f"/urls/{sample_url['short_code']}")
-        assert resp.status_code == 200
-        assert resp.get_json()["is_active"] is False
+        assert resp.status_code == 410
 
 
 # ---------------------------------------------------------------------------

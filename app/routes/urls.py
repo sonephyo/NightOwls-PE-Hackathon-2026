@@ -203,6 +203,8 @@ def get_url(id):
 def get_url_by_short_code(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
+        if not url.is_active:
+            return jsonify({"error": "URL is inactive"}), 410
         return jsonify(url_to_dict(url))
     except Url.DoesNotExist:
         return jsonify({"error": "URL not found"}), 404
