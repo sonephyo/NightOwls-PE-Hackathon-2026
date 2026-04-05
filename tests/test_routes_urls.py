@@ -347,12 +347,12 @@ class TestCreateUrl:
         resp = client.post("/urls", json={"original_url": "https://x.com", "user_id": 999999})
         assert resp.status_code == 400
 
-    def test_accepts_explicit_short_code_with_symbols(self, client, sample_user):
+    def test_rejects_explicit_short_code_with_symbols(self, client, sample_user):
         resp = client.post(
             "/urls",
             json={"original_url": "https://x.com", "short_code": "bad-code!", "user_id": sample_user["id"]},
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 400
 
     def test_returns_400_for_explicit_short_code_too_long(self, client, sample_user):
         resp = client.post(

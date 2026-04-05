@@ -2,6 +2,7 @@ import csv
 import io
 import os
 import random
+import re
 import string
 from datetime import datetime
 from urllib.parse import urlparse
@@ -77,6 +78,7 @@ _SORT_FIELDS = {
 
 _CREATE_FIELDS = {'user_id', 'original_url', 'title', 'short_code', 'is_active'}
 _UPDATE_FIELDS = {'original_url', 'title', 'is_active'}
+_SHORT_CODE_PATTERN = re.compile(r'^[A-Za-z0-9]+$')
 
 
 def generate_short_code(length=6):
@@ -244,6 +246,8 @@ def create_url():
             return jsonify({"error": "short_code must be a non-empty string"}), 400
         if len(explicit_code) > 10:
             return jsonify({"error": "short_code must be <= 10 chars"}), 400
+        if not _SHORT_CODE_PATTERN.fullmatch(explicit_code):
+            return jsonify({"error": "short_code must be alphanumeric"}), 400
         if Url.select().where(Url.short_code == explicit_code).exists():
             short_code = generate_short_code()
             while Url.select().where(Url.short_code == short_code).exists():
