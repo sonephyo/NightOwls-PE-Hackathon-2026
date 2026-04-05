@@ -18,7 +18,7 @@ const shortCodes = [
   'yQSwT2', '3mgDRW', 'VgkwPM', 'H8r4XJ', 'afSvrh', 'ANQfSc'
 ];
 
-const BASE_URL = __ENV.TARGET || 'http://159.203.122.103';
+const BASE_URL = __ENV.TARGET || 'https://night-owls.duckdns.org';
 
 export default function () {
   const shortCode = shortCodes[Math.floor(Math.random() * shortCodes.length)];

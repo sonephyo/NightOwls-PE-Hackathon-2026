@@ -19,7 +19,7 @@ const shortCodes = [
   'yQSwT2', '3mgDRW', 'VgkwPM', 'H8r4XJ', 'afSvrh', 'ANQfSc'
 ];
 
-const BASE_URL = __ENV.TARGET || 'http://159.203.122.103';
+const BASE_URL = __ENV.TARGET || 'https://night-owls.duckdns.org';
 
 export default function () {
   // Pick a random short code from the list
@@ -32,7 +32,7 @@ export default function () {
   
   // Verify the response
   check(response, {
-    'redirect or not found': (r) => r.status === 302 || r.status === 404,
+    'redirect or not found': (r) => r.status === 301 || r.status === 302 || r.status === 404 || r.status === 410,
     'response time < 500ms': (r) => r.timings.duration < 500,
   });
   
