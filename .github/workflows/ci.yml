@@ -107,6 +107,7 @@ jobs:
             DATABASE_PASSWORD=postgres
             ENVEOF
 
+            git checkout -- .
             git pull origin main
 
             docker compose pull --quiet || true
