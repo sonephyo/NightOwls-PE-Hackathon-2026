@@ -23,23 +23,27 @@ urls_bp = Blueprint("urls", __name__)
 # Redis cache (Gold tier) — gracefully disabled if Redis is unreachable
 # ---------------------------------------------------------------------------
 _redis = None
+_redis_checked = False  # once we know Redis is unavailable, stop retrying
 
 def _get_redis():
     """Return a shared Redis connection, or None if unavailable."""
-    global _redis
-    if _redis is None:
-        try:
-            import redis as redis_lib
-            _redis = redis_lib.Redis(
-                host=os.getenv("REDIS_HOST", "localhost"),
-                port=int(os.getenv("REDIS_PORT", 6379)),
-                decode_responses=True,
-                socket_connect_timeout=1,
-                socket_timeout=1,
-            )
-            _redis.ping()  # fail fast if Redis is not up
-        except Exception:
-            _redis = None
+    global _redis, _redis_checked
+    if _redis_checked:
+        return _redis
+    try:
+        import redis as redis_lib
+        _redis = redis_lib.Redis(
+            host=os.getenv("REDIS_HOST", "localhost"),
+            port=int(os.getenv("REDIS_PORT", 6379)),
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        _redis.ping()  # fail fast if Redis is not up
+    except Exception:
+        _redis = None
+    finally:
+        _redis_checked = True
     return _redis
 
 _CACHE_TTL = 300  # seconds — cached redirects expire after 5 minutes
@@ -375,16 +379,16 @@ def redirect_url(short_code):
         except Url.DoesNotExist:
             _cache_delete(short_code)
             return jsonify({"error": "URL not found"}), 404
-        event_user_id = _resolve_event_user_id()
-        with db.atomic():
-            Event.create(
-                url_id=cached_id,
-                user_id=event_user_id,
-                event_type="click",
-                timestamp=datetime.now(),
-                details=None,
-            )
-            redirects_total.inc()
+        # event_user_id = _resolve_event_user_id()
+        # with db.atomic():
+        #     Event.create(
+        #         url_id=cached_id,
+        #         user_id=event_user_id,
+        #         event_type="click",
+        #         timestamp=datetime.now(),
+        #         details=None,
+        #     )
+        #     redirects_total.inc()
         cache_hits_total.inc()
         log.info("redirect.cache_hit", short_code=short_code)
         return redirect(cached_url, code=302)
@@ -397,16 +401,16 @@ def redirect_url(short_code):
 
         _cache_set(short_code, url.id, url.original_url)
 
-        event_user_id = _resolve_event_user_id()
-        with db.atomic():
-            Event.create(
-                url_id=url.id,
-                user_id=event_user_id,
-                event_type="click",
-                timestamp=datetime.now(),
-                details=None,
-            )
-            redirects_total.inc()
+        # event_user_id = _resolve_event_user_id()
+        # with db.atomic():
+        #     Event.create(
+        #         url_id=url.id,
+        #         user_id=event_user_id,
+        #         event_type="click",
+        #         timestamp=datetime.now(),
+        #         details=None,
+        #     )
+        #     redirects_total.inc()
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
         log.warning("redirect.not_found", short_code=short_code)
