@@ -394,6 +394,7 @@ def redirect_url(short_code):
     try:
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
+            log.warning("redirect.inactive", short_code=short_code)
             return jsonify({"error": "URL not found"}), 404
 
         _cache_set(short_code, url.id, url.original_url)
@@ -408,6 +409,7 @@ def redirect_url(short_code):
                 details=None,
             )
             redirects_total.inc()
+        log.info("redirect.success", short_code=short_code, destination=url.original_url)
         return redirect(url.original_url, code=302)
     except Url.DoesNotExist:
         log.warning("redirect.not_found", short_code=short_code)

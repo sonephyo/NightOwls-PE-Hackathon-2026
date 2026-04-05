@@ -12,7 +12,7 @@
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 2 },
       "options": {
         "mode": "markdown",
-        "content": "## All Container Logs — Raw Stream\nUnfiltered logs from every container in the stack."
+        "content": "## All Container Logs — Raw Stream"
       }
     },
     {

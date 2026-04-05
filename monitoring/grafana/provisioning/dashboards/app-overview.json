@@ -12,7 +12,7 @@
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 2 },
       "options": {
         "mode": "markdown",
-        "content": "## MLH PE Hack — Live Infrastructure Overview\nGolden Signals: **Saturation** · **Traffic** · **Errors** · **Latency**"
+        "content": "## MLH PE Hack — Live Infrastructure Overview"
       }
     },
     {

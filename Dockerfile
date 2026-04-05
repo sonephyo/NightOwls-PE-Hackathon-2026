@@ -3,6 +3,8 @@ FROM python:3.13-slim
 # Install uv
 RUN pip install uv --no-cache-dir
 
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Install dependencies (cached layer)

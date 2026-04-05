@@ -2,7 +2,6 @@ import threading
 import time
 
 import psutil
-import structlog
 from flask import Blueprint, Response
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -11,8 +10,6 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-
-log = structlog.get_logger(__name__)
 
 metrics_bp = Blueprint("metrics", __name__)
 
@@ -56,7 +53,6 @@ threading.Thread(target=_sample_metrics, daemon=True).start()
 
 @metrics_bp.route("/metrics")
 def metrics():
-    log.info("metrics.scraped")
     return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 # Endpoint to bring cpu usage up 
