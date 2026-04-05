@@ -47,12 +47,8 @@ def create_app():
         # Redis check — non-critical, app degrades gracefully without it
         try:
             import os, redis as redis_lib
-            r = redis_lib.Redis(
-                host=os.getenv("REDIS_HOST", "localhost"),
-                port=int(os.getenv("REDIS_PORT", 6379)),
-                socket_connect_timeout=1,
-                socket_timeout=1,
-            )
+            redis_url = os.getenv("REDIS_URL") or f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/0"
+            r = redis_lib.Redis.from_url(redis_url, socket_connect_timeout=1, socket_timeout=1)
             r.ping()
             checks["redis"] = "ok"
         except Exception:  # pragma: no cover
