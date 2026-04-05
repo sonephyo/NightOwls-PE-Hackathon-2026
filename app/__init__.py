@@ -1,8 +1,9 @@
 import logging
+import time
 
 import structlog
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 
 from app.database import init_db
 from app.routes import register_routes
@@ -41,6 +42,33 @@ def create_app():
         log = structlog.get_logger(__name__)
         log.error("unhandled_exception", exc_info=True)
         return jsonify(error="internal server error"), 500
+
+    from app.routes.metrics import http_requests_total, request_duration_seconds
+
+    @app.before_request
+    def start_timer():
+        g.start_time = time.time()
+
+    @app.after_request
+    def record_request_metrics(response):
+        endpoint = str(request.url_rule) if request.url_rule else "unknown"
+        http_requests_total.labels(
+            method=request.method,
+            endpoint=endpoint,
+            http_status=str(response.status_code),
+        ).inc()
+        if hasattr(g, "start_time"):
+            request_duration_seconds.labels(
+                method=request.method,
+                endpoint=endpoint,
+            ).observe(time.time() - g.start_time)
+        return response
+
+    @app.route("/test-error")
+    def test_error():
+        log = structlog.get_logger(__name__)
+        log.error("simulated_error", endpoint="/test-error", reason="manual test trigger")
+        return jsonify(error="simulated server error"), 500
 
     return app
 
