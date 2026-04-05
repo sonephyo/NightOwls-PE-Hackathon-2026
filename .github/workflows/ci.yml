@@ -107,19 +107,18 @@ jobs:
             DATABASE_PASSWORD=postgres
             ENVEOF
 
-            git checkout -- .
             git pull origin main
 
-            sudo docker compose pull --quiet || true
-            sudo docker compose up -d --build --remove-orphans
+            docker compose pull --quiet || true
+            docker compose up -d --build --remove-orphans
 
-            # Verify the app came back up (nginx is on host port 80)
+            # Verify the app came back up (nginx is on port 80 in prod)
             for i in $(seq 1 15); do
-              if curl -sf http://localhost:80/health; then
+              if curl -sf http://localhost/health; then
                 echo "Deploy successful"
                 exit 0
               fi
               sleep 3
             done
-            sudo docker compose logs app
+            docker compose logs app
             exit 1

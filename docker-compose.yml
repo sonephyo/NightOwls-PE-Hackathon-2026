@@ -3,7 +3,7 @@ name: nightowls
 services:
   app:
     build: .
-    # No ports here — Nginx is the only public entry point (port 80).
+    # No ports here — Nginx is the only entry point on port 8000.
     # Scale with: docker compose up --build --scale app=2
     environment:
       DATABASE_HOST: db
@@ -32,7 +32,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      - "8000:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -81,8 +81,6 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--web.enable-lifecycle"
-      - "--web.external-url=http://night-owls.duckdns.org/prometheus/"
-      - "--web.route-prefix=/"
     networks:
       - observability
     restart: unless-stopped
@@ -120,8 +118,6 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "false"
-      GF_SERVER_ROOT_URL: "http://night-owls.duckdns.org/grafana"
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - ./monitoring/grafana/provisioning/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
