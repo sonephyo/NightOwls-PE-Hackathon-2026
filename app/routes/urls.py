@@ -23,27 +23,22 @@ urls_bp = Blueprint("urls", __name__)
 # Redis cache (Gold tier) — gracefully disabled if Redis is unreachable
 # ---------------------------------------------------------------------------
 _redis = None
-_redis_checked = False  # once we know Redis is unavailable, stop retrying
 
 def _get_redis():
     """Return a shared Redis connection, or None if unavailable."""
-    global _redis, _redis_checked
-    if _redis_checked:
-        return _redis
-    try:
-        import redis as redis_lib
-        _redis = redis_lib.Redis(
-            host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", 6379)),
-            decode_responses=True,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-        )
-        _redis.ping()  # fail fast if Redis is not up
-    except Exception:
-        _redis = None
-    finally:
-        _redis_checked = True
+    global _redis
+    if _redis is None:
+        try:
+            import redis as redis_lib
+            _redis = redis_lib.Redis(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                decode_responses=True,
+                socket_connect_timeout=1,
+            )
+            _redis.ping()  # fail fast if Redis is not up
+        except Exception:
+            _redis = None
     return _redis
 
 _CACHE_TTL = 300  # seconds — cached redirects expire after 5 minutes
