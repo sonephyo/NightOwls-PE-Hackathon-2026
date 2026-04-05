@@ -155,3 +155,44 @@ class TestCreateEventIntegration:
         # Details are stored as a JSON string in the DB
         import json
         assert json.loads(row.details) == {"os": "mac"}
+
+
+# ---------------------------------------------------------------------------
+# GET /<short_code>  →  redirect creates event in DB
+# ---------------------------------------------------------------------------
+
+class TestRedirectIntegration:
+    def test_redirect_creates_event_in_db(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+
+        events = Event.select().where(
+            (Event.url_id == sample_url["id"]) & (Event.event_type == "click")
+        )
+        assert events.count() == 1
+
+    def test_deactivated_url_returns_404_and_no_event(self, client, sample_url):
+        client.put(f"/urls/{sample_url['id']}", json={"is_active": False})
+        resp = client.get(f"/{sample_url['short_code']}")
+
+        assert resp.status_code == 404
+        assert Event.select().where(Event.url_id == sample_url["id"]).count() == 0
+
+    def test_deleted_url_returns_404(self, client, sample_url):
+        short_code = sample_url["short_code"]
+        client.delete(f"/urls/{sample_url['id']}")
+        resp = client.get(f"/{short_code}")
+
+        assert resp.status_code == 404
+        assert Url.select().where(Url.short_code == short_code).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# User update  →  check DB
+# ---------------------------------------------------------------------------
+
+class TestUpdateUserIntegration:
+    def test_update_user_persists_to_db(self, client, sample_user):
+        client.put(f"/users/{sample_user['id']}", json={"username": "newname"})
+
+        row = User.get_by_id(sample_user["id"])
+        assert row.username == "newname"
