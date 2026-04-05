@@ -26,7 +26,7 @@ The runbook covers both critical alerts — `FlaskAppDown` and `HighErrorRate`. 
 
 **Evidence URL:** [Youtube Link](https://youtu.be/OG62fIYyiCc) 
 
-**Image:** [link](https://imgur.com/a/q9JqYM2)
+**Image:** [link](https://imgur.com/a/sherlock-mode-EztzJc8)
 
 **Notes:**
 To simulate an incident, we hammered `/stress` (CPU spikes) and `/test-error` (500 errors) simultaneously. Starting from the dashboard top row — App Status green, Error Rate red, Latency p95 elevated — we ruled out a crash and focused on errors. The Traffic panel showed requests still flowing, and the Saturation panel showed repeated CPU spikes correlating exactly with the error spike. Switching to the Logs dashboard confirmed the root cause: a flood of requests to `/stress` and `/test-error` starting at the same timestamp. The CPU saturation caused worker queuing, which produced the latency spike and 500 errors. Root cause identified using only the dashboard and logs.
