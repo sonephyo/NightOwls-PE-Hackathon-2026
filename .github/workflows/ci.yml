@@ -110,8 +110,8 @@ jobs:
             git checkout -- .
             git pull origin main
 
-            docker compose pull --quiet || true
-            docker compose up -d --build --remove-orphans
+            sudo docker compose pull --quiet || true
+            sudo docker compose up -d --build --remove-orphans
 
             # Verify the app came back up (nginx is on host port 80)
             for i in $(seq 1 15); do
@@ -121,5 +121,5 @@ jobs:
               fi
               sleep 3
             done
-            docker compose logs app
+            sudo docker compose logs app
             exit 1
