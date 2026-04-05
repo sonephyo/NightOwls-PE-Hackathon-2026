@@ -11,7 +11,7 @@ echo "Starting server..."
 exec uv run gunicorn \
   --workers 4 \
   --worker-class gthread \
-  --threads 8 \
+  --threads 4 \
   --timeout 60 \
   --keep-alive 5 \
   --max-requests 2000 \
