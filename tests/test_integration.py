@@ -196,3 +196,37 @@ class TestUpdateUserIntegration:
 
         row = User.get_by_id(sample_user["id"])
         assert row.username == "newname"
+
+    def test_get_user_by_id_after_create(self, client):
+        resp = client.post("/users", json={"username": "gettest", "email": "gettest@x.com"})
+        user_id = resp.get_json()["id"]
+
+        row = User.get_by_id(user_id)
+        assert row.email == "gettest@x.com"
+
+
+# ---------------------------------------------------------------------------
+# Events  →  additional DB checks
+# ---------------------------------------------------------------------------
+
+class TestEventIntegration:
+    def test_redirect_event_count_increments_in_db(self, client, sample_url):
+        client.get(f"/{sample_url['short_code']}")
+        client.get(f"/{sample_url['short_code']}")
+
+        count = Event.select().where(
+            (Event.url_id == sample_url["id"]) & (Event.event_type == "click")
+        ).count()
+        assert count == 2
+
+    def test_get_event_by_id_after_create(self, client, sample_user, sample_url):
+        resp = client.post("/events", json={
+            "url_id": sample_url["id"],
+            "user_id": sample_user["id"],
+            "event_type": "share",
+        })
+        event_id = resp.get_json()["id"]
+
+        row = Event.get_by_id(event_id)
+        assert row.event_type == "share"
+        assert row.url_id_id == sample_url["id"]
