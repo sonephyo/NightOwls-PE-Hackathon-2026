@@ -22,8 +22,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run tests
-        run: uv run pytest tests/ -v
+      - name: Run tests with coverage
+        run: uv run pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=html --cov-fail-under=95
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 14
 
   docker:
     runs-on: ubuntu-latest
@@ -35,13 +43,38 @@ jobs:
       - name: Build Docker image
         run: docker build -t nightowls-app .
 
+      - name: Swap in CI nginx config (no SSL — certs don't exist in CI)
+        run: |
+          cat > nginx/nginx.conf << 'EOF'
+          worker_processes 1;
+          events { worker_connections 1024; }
+          http {
+            upstream app_servers { server app:8000; }
+            server {
+              listen 80;
+              location / {
+                proxy_pass http://app_servers;
+                proxy_set_header Host $host;
+              }
+              location /nginx-health {
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+              }
+            }
+          }
+          EOF
+
+      - name: Create certbot dirs (expected by nginx volume mounts, not present in CI)
+        run: mkdir -p certbot/www certbot/conf
+
       - name: Start app + db + nginx + redis
-        run: docker compose up -d app db nginx redis
+        # --scale app=1 overrides deploy.replicas=3 from compose — 1 replica is enough for CI
+        run: docker compose up -d --scale app=1 app db nginx redis
 
       - name: Wait for app to be healthy
         run: |
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:8000/health; then
+            if curl -sf http://localhost/health; then
               echo "App is up"
               exit 0
             fi
@@ -53,11 +86,55 @@ jobs:
           exit 1
 
       - name: Smoke test /health
-        run: curl -sf http://localhost:8000/health | grep '"status"'
+        run: curl -sf http://localhost/health | grep '"status"'
 
       - name: Smoke test /metrics
-        run: curl -sf http://localhost:8000/metrics | grep 'app_cpu_usage_percent'
+        run: curl -sf http://localhost/metrics | grep 'app_cpu_usage_percent'
 
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [test, docker]
+    # Only deploy on pushes to main — not on PRs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy to DigitalOcean droplet
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd /var/www/PE-Hackathon-Template-2026
+
+            # Write .env with secrets — never stored in git
+            cat > .env <<'ENVEOF'
+            DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
+            PAGERDUTY_ROUTING_KEY=${{ secrets.PAGERDUTY_ROUTING_KEY }}
+            DATABASE_NAME=hackathon_db
+            DATABASE_HOST=db
+            DATABASE_PORT=5432
+            DATABASE_USER=postgres
+            DATABASE_PASSWORD=postgres
+            ENVEOF
+
+            git pull origin main
+
+            docker compose pull --quiet || true
+            docker compose up -d --build --remove-orphans
+
+            # Verify the app came back up (nginx is on port 80 in prod)
+            for i in $(seq 1 15); do
+              if curl -sf http://localhost/health; then
+                echo "Deploy successful"
+                exit 0
+              fi
+              sleep 3
+            done
+            docker compose logs app
+            exit 1

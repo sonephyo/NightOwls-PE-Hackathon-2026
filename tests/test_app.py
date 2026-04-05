@@ -51,6 +51,31 @@ class TestHealth:
     def test_health_returns_status_ok(self, client):
         assert client.get("/health").get_json()["status"] == "ok"
 
+    def test_health_includes_checks(self, client):
+        data = client.get("/health").get_json()
+        assert "checks" in data
+
+    def test_health_database_check_ok(self, client):
+        data = client.get("/health").get_json()
+        assert data["checks"]["database"] == "ok"
+
+    def test_health_redis_check_present(self, client):
+        data = client.get("/health").get_json()
+        assert data["checks"]["redis"] in ("ok", "unavailable")
+
+    def test_health_503_when_database_down(self, app, monkeypatch):
+        from app.database import db
+
+        def _raise(*a, **kw):
+            raise Exception("db down")
+
+        monkeypatch.setattr(db.obj, "execute_sql", _raise)
+        resp = app.test_client().get("/health")
+        assert resp.status_code == 503
+        data = resp.get_json()
+        assert data["status"] == "error"
+        assert "error" in data["checks"]["database"]
+
 
 # ---------------------------------------------------------------------------
 # /metrics

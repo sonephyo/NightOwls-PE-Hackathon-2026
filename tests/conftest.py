@@ -37,8 +37,8 @@ def app(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("db") / "test.db")
     test_db = SqliteDatabase(db_path, pragmas={"foreign_keys": 0})
 
-    # Patch PostgresqlDatabase in app.database so init_db uses SQLite.
-    with patch("app.database.PostgresqlDatabase", return_value=test_db):
+    # Patch PooledPostgresqlDatabase in app.database so init_db uses SQLite.
+    with patch("app.database.PooledPostgresqlDatabase", return_value=test_db):
         from app import create_app
         flask_app = create_app()
 

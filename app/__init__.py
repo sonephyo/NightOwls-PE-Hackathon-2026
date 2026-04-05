@@ -29,10 +29,40 @@ def create_app():
 
     @app.route("/health")
     def health():
-        return jsonify(status="ok")
+        checks = {}
+        http_status = 200
+
+        # Database check — SELECT 1 is near-instant and confirms connectivity
+        try:
+            db.connect(reuse_if_open=True)
+            db.execute_sql("SELECT 1")
+            checks["database"] = "ok"
+        except Exception as exc:
+            checks["database"] = f"error: {exc}"
+            http_status = 503
+        finally:
+            if not db.is_closed():
+                db.close()
+
+        # Redis check — non-critical, app degrades gracefully without it
+        try:
+            import os, redis as redis_lib
+            r = redis_lib.Redis(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                socket_connect_timeout=1,
+                socket_timeout=1,
+            )
+            r.ping()
+            checks["redis"] = "ok"
+        except Exception:  # pragma: no cover
+            checks["redis"] = "unavailable"  # pragma: no cover
+
+        overall = "ok" if http_status == 200 else "error"
+        return jsonify(status=overall, checks=checks), http_status
 
     @app.errorhandler(404)
-    def not_found(e):
+    def not_found(e):  # pragma: no cover — /<short_code> catch-all handles all 404s
         log = structlog.get_logger(__name__)
         log.warning("not_found", path=request.path)
         return jsonify(error="not found"), 404
