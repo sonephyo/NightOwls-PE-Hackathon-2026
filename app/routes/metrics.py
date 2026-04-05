@@ -26,6 +26,7 @@ ram_gauge = Gauge("app_ram_usage_mb", "Flask process RSS memory usage in MB")
 #   urls_created_total.inc()
 urls_created_total = Counter("app_urls_created_total", "Total URLs shortened")
 redirects_total = Counter("app_redirects_total", "Total redirects served")
+cache_hits_total = Counter("app_cache_hits_total", "Total Redis cache hits on redirect")
 
 
 @metrics_bp.route("/metrics")

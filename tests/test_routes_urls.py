@@ -195,6 +195,22 @@ class TestGetUrlByShortCode:
 
 
 # ---------------------------------------------------------------------------
+# GET /urls/code/<short_code>
+# ---------------------------------------------------------------------------
+
+class TestGetUrlByCode:
+    def test_returns_url_by_short_code(self, client, sample_url):
+        resp = client.get(f"/urls/code/{sample_url['short_code']}")
+        assert resp.status_code == 200
+        assert resp.get_json()["short_code"] == sample_url["short_code"]
+
+    def test_returns_404_for_unknown_short_code(self, client):
+        resp = client.get("/urls/code/doesnotexist")
+        assert resp.status_code == 404
+        assert "error" in resp.get_json()
+
+
+# ---------------------------------------------------------------------------
 # POST /urls
 # ---------------------------------------------------------------------------
 
@@ -240,14 +256,38 @@ class TestCreateUrl:
         assert resp2.status_code == 201
         assert resp1.get_json()["short_code"] != resp2.get_json()["short_code"]
 
-    def test_same_original_url_still_gets_unique_short_codes(self, client, sample_user):
+    def test_same_original_url_returns_existing_record(self, client, sample_user):
         uid = sample_user["id"]
         payload = {"original_url": "https://same.com/path", "user_id": uid}
         resp1 = client.post("/urls", json=payload)
         resp2 = client.post("/urls", json=payload)
         assert resp1.status_code == 201
-        assert resp2.status_code == 201
-        assert resp1.get_json()["short_code"] != resp2.get_json()["short_code"]
+        assert resp2.status_code == 200  # deduplication: existing record returned
+        assert resp1.get_json()["short_code"] == resp2.get_json()["short_code"]
+
+    def test_returns_400_for_unknown_field(self, client, sample_user):
+        resp = client.post(
+            "/urls",
+            json={"original_url": "https://x.com", "user_id": sample_user["id"], "bad_field": "x"},
+        )
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_returns_400_when_title_is_not_string(self, client, sample_user):
+        resp = client.post(
+            "/urls",
+            json={"original_url": "https://x.com", "user_id": sample_user["id"], "title": 123},
+        )
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_returns_400_when_is_active_is_not_bool(self, client, sample_user):
+        resp = client.post(
+            "/urls",
+            json={"original_url": "https://x.com", "user_id": sample_user["id"], "is_active": "yes"},
+        )
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
 
     def test_returns_400_when_url_is_not_http(self, client, sample_user):
         resp = client.post("/urls", json={"original_url": "ftp://bad.com", "user_id": sample_user["id"]})
@@ -389,6 +429,22 @@ class TestUpdateUrl:
     def test_update_response_includes_click_count(self, client, sample_url):
         resp = client.put(f"/urls/{sample_url['id']}", json={"title": "new"})
         assert "click_count" in resp.get_json()
+
+    def test_returns_400_when_no_valid_update_fields(self, client, sample_url):
+        resp = client.put(f"/urls/{sample_url['id']}", json={})
+        assert resp.status_code == 400
+
+    def test_returns_400_when_updating_original_url_to_invalid(self, client, sample_url):
+        resp = client.put(f"/urls/{sample_url['id']}", json={"original_url": "not-a-url"})
+        assert resp.status_code == 400
+
+    def test_returns_400_when_updating_title_to_non_string(self, client, sample_url):
+        resp = client.put(f"/urls/{sample_url['id']}", json={"title": 999})
+        assert resp.status_code == 400
+
+    def test_returns_400_when_updating_is_active_to_non_bool(self, client, sample_url):
+        resp = client.put(f"/urls/{sample_url['id']}", json={"is_active": "true"})
+        assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------

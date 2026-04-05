@@ -30,6 +30,10 @@ def seed():
             load_csv("data/users.csv", User)
             _load_urls("data/urls.csv")
             load_csv("data/events.csv", Event)
+            # Reset sequences so auto-increment works after bulk CSV insert
+            db.execute_sql("SELECT setval('users_id_seq', (SELECT MAX(id) FROM users))")
+            db.execute_sql("SELECT setval('urls_id_seq', (SELECT MAX(id) FROM urls))")
+            db.execute_sql("SELECT setval('events_id_seq', (SELECT MAX(id) FROM events))")
             print("Seed complete.")
         else:
             print("Database already seeded, skipping.")

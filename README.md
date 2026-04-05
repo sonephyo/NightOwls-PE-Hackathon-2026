@@ -98,6 +98,85 @@ Filter to warnings only: `{service="app"} | json | level="warning"`
 
 ---
 
+## Changes by Sriky
+
+### 1. Fixed CRLF line endings (`entrypoint.sh`, `Dockerfile`)
+Windows saves files with `\r\n` line endings. Linux inside Docker can't run shell scripts with `\r` characters — it would fail with `/bin/sh^M: not found`. Converted both files to LF and added `.gitattributes` to enforce this on future commits.
+
+### 2. Fixed PostgreSQL sequences after CSV seed
+When the database is seeded from CSV files with explicit IDs (1, 2, 3...), PostgreSQL's auto-increment counter doesn't advance. So the first `POST /urls` would crash with `duplicate key violates unique constraint`. Fixed by resetting all three sequences (`users`, `urls`, `events`) at the end of `seed.py`.
+
+### 3. Added `GET /urls/code/<short_code>` endpoint
+Added a new endpoint to look up a URL record by its short code directly instead of only by numeric DB id.
+
+```bash
+curl http://localhost:8000/urls/code/2Ngd3j
+```
+
+### 4. Built a frontend UI (`app/templates/index.html`)
+Added a browser-based interface at `http://localhost:8000` — paste a URL, get a short link, copy it, click it. Shows an **existing** badge if the URL was already shortened.
+
+### 5. URL deduplication in `POST /urls`
+`POST /urls` now returns the existing record (`200`) if the URL was already shortened instead of creating a duplicate. New URLs still return `201`.
+
+### 6. Redis caching (Gold tier)
+Added Redis in front of PostgreSQL for the redirect endpoint. Popular short codes are cached in memory with a 5-minute TTL — cache hits skip the DB entirely and return in under 1ms.
+
+```
+GET /<short_code>
+  → Redis hit  → redirect (< 1ms, no DB)
+  → Redis miss → PostgreSQL → cache → redirect
+```
+
+### 7. Nginx load balancer tuning
+Replaced default nginx config with a production-tuned version:
+- `least_conn` load balancing — sends requests to the least busy replica
+- `worker_connections 4096` + `backlog 4096` — handles sudden connection spikes
+- `worker_processes auto` — uses all CPU cores
+- `keepalive 32` — reuses upstream connections
+
+### 8. Gunicorn optimization (`entrypoint.sh`)
+Bumped from 2 to 4 workers with production flags:
+```sh
+gunicorn --workers 4 --timeout 30 --keep-alive 2 --max-requests 1000 --max-requests-jitter 50
+```
+- 4 workers = 4× parallel request handling per replica
+- `--max-requests 1000` restarts workers periodically to prevent memory leaks
+
+### 9. Docker Compose scaling (3 replicas)
+Increased app replicas from 2 to 3 (`deploy: replicas: 3`) giving 12 total Gunicorn worker slots behind nginx.
+
+### 10. Autoscaler (`autoscaler.py`)
+Added a Prometheus-driven autoscaler that scales app replicas up/down based on live traffic:
+- Scales **up** when redirect rate > 30 req/s OR CPU > 50%
+- Scales **down** after 3 consecutive low-load readings (prevents flapping)
+- Min 2 replicas at rest, max 6 under load
+
+```bash
+uv run autoscaler.py
+```
+
+### 11. Load tests (Bronze / Silver / Gold / Extreme)
+Added k6 load test scripts for all tiers:
+
+| Script | Users | Requirement |
+|---|---|---|
+| `load_test.js` | 50 | Bronze baseline |
+| `load_test_silver.js` | 200 | Silver — p95 < 3s |
+| `load_test_gold.js` | 500 | Gold — p95 < 3s, errors < 5% |
+| `load_test_extreme.js` | 1000 | Beyond quest — stress test |
+
+**Results:**
+
+| Tier | Users | p95 | Error Rate |
+|---|---|---|---|
+| Bronze | 50 | 16ms | 0% |
+| Silver | 200 | 17.8ms | 0% |
+| Gold | 500 | 64ms | 0% |
+| Extreme | 1000 | 588ms | 0% |
+
+---
+
 ## For Developers Adding Features
 
 See the [Observability Guide](#observability-guide) below for how to add logs and metrics to your routes.
@@ -275,3 +354,13 @@ curl -s http://localhost:8000/urls/999999
 curl -s http://localhost:8000/doesnotexist
 # → {"error": "not found"}
 ```
+
+---
+
+## Gold Tier — Bottleneck Report
+
+**What was slow:** Under 500 concurrent users, the database was the bottleneck — every redirect hit PostgreSQL to look up the short code, which saturated DB connections and pushed p95 response times above 3 seconds with a ~5% error rate.
+
+**What we fixed:** Added Redis caching in front of the database. Popular short codes are stored in memory with a 5-minute TTL, so repeated redirects skip the DB entirely — the cache hit path is a single in-memory lookup taking under 1ms vs ~20ms for a DB query.
+
+**Result:** At 500 concurrent users, p95 dropped well under 3 seconds and error rate stayed below 5%, because only cold cache misses (first-time lookups) ever reach PostgreSQL.

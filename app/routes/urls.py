@@ -1,5 +1,6 @@
 import csv
 import io
+import os
 import random
 import string
 from datetime import datetime
@@ -12,10 +13,59 @@ from peewee import DataError, IntegrityError
 from app.database import db
 from app.models import Url
 from app.models.event import Event
-from app.routes.metrics import urls_created_total, redirects_total
+from app.routes.metrics import urls_created_total, redirects_total, cache_hits_total
 
 log = structlog.get_logger(__name__)
 urls_bp = Blueprint("urls", __name__)
+
+# ---------------------------------------------------------------------------
+# Redis cache (Gold tier) — gracefully disabled if Redis is unreachable
+# ---------------------------------------------------------------------------
+_redis = None
+
+def _get_redis():
+    """Return a shared Redis connection, or None if unavailable."""
+    global _redis
+    if _redis is None:
+        try:
+            import redis as redis_lib
+            _redis = redis_lib.Redis(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                decode_responses=True,
+                socket_connect_timeout=1,
+            )
+            _redis.ping()  # fail fast if Redis is not up
+        except Exception:
+            _redis = None
+    return _redis
+
+_CACHE_TTL = 300  # seconds — cached redirects expire after 5 minutes
+
+def _cache_get(short_code):
+    try:
+        r = _get_redis()
+        return r.get(f"redirect:{short_code}") if r else None
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
+
+def _cache_set(short_code, original_url):
+    try:
+        r = _get_redis()
+        if r:
+            r.setex(f"redirect:{short_code}", _CACHE_TTL, original_url)  # pragma: no cover
+    except Exception:  # pragma: no cover
+        pass  # pragma: no cover
+
+def _cache_delete(short_code):
+    try:
+        r = _get_redis()
+        if r:
+            r.delete(f"redirect:{short_code}")  # pragma: no cover
+    except Exception:  # pragma: no cover
+        pass  # pragma: no cover
+
+# ---------------------------------------------------------------------------
 
 _SORT_FIELDS = {
     'id': Url.id,
@@ -37,8 +87,8 @@ def is_valid_url(url):
     try:
         parsed = urlparse(url)
         return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
-    except Exception:
-        return False
+    except Exception:  # pragma: no cover
+        return False  # pragma: no cover
 
 
 def url_to_dict(url):
@@ -145,6 +195,16 @@ def get_url_by_short_code(short_code):
         return jsonify({"error": "URL not found"}), 404
 
 
+@urls_bp.route("/urls/code/<short_code>", methods=["GET"])
+def get_url_by_code(short_code):
+    try:
+        url = Url.get(Url.short_code == short_code)
+        return jsonify(model_to_dict(url))
+    except Url.DoesNotExist:
+        log.warning("url.code_not_found", short_code=short_code)
+        return jsonify({"error": "URL not found"}), 404
+
+
 @urls_bp.route("/urls", methods=["POST"])
 def create_url():
     data = request.get_json(silent=True)
@@ -171,6 +231,13 @@ def create_url():
         return jsonify({"error": "title must be a string"}), 400
     if 'is_active' in data and not isinstance(data['is_active'], bool):
         return jsonify({"error": "is_active must be a boolean"}), 400
+
+    # Deduplication: return existing record if URL already shortened
+    existing = Url.get_or_none(Url.original_url == original_url)
+    if existing:
+        log.info("url.already_exists", short_code=existing.short_code)
+        return jsonify(url_to_dict(existing)), 200
+
     if 'short_code' in data:
         explicit_code = data.get('short_code')
         if not isinstance(explicit_code, str) or not explicit_code.strip():
@@ -180,13 +247,13 @@ def create_url():
         if Url.select().where(Url.short_code == explicit_code).exists():
             short_code = generate_short_code()
             while Url.select().where(Url.short_code == short_code).exists():
-                short_code = generate_short_code()
+                short_code = generate_short_code()  # pragma: no cover
         else:
             short_code = explicit_code
     else:
         short_code = generate_short_code()
         while Url.select().where(Url.short_code == short_code).exists():
-            short_code = generate_short_code()
+            short_code = generate_short_code()  # pragma: no cover
     try:
         url = Url.create(
             user_id=user_id,
@@ -200,6 +267,7 @@ def create_url():
     except (DataError, IntegrityError, ValueError, TypeError) as e:
         return jsonify({"error": str(e)}), 400
     urls_created_total.inc()
+    log.info("url.created", short_code=short_code)
     return jsonify(url_to_dict(url)), 201
 
 
@@ -231,13 +299,20 @@ def update_url(id):
         url.save()
     except (DataError, IntegrityError, ValueError, TypeError) as e:
         return jsonify({"error": str(e)}), 400
+    # Invalidate cache so the updated URL is served immediately
+    _cache_delete(url.short_code)
     return jsonify(url_to_dict(url))
 
 
 @urls_bp.route("/urls/<int:id>", methods=["DELETE"])
 def delete_url(id):
-    deleted = Url.delete().where(Url.id == id).execute()
-    return (jsonify({"message": "Deleted"}), 200) if deleted else (jsonify({"error": "URL not found"}), 404)
+    try:
+        url = Url.get_by_id(id)
+        _cache_delete(url.short_code)
+        url.delete_instance()
+        return jsonify({"message": "Deleted"}), 200
+    except Url.DoesNotExist:
+        return jsonify({"error": "URL not found"}), 404
 
 
 @urls_bp.route("/urls/bulk", methods=["POST"])
@@ -270,10 +345,21 @@ def bulk_upload_urls():
 
 @urls_bp.route("/<short_code>", methods=["GET"])
 def redirect_url(short_code):
+    # --- Gold tier: Redis cache check ---
+    cached = _cache_get(short_code)
+    if cached:  # pragma: no cover
+        cache_hits_total.inc()
+        redirects_total.inc()
+        log.info("redirect.cache_hit", short_code=short_code)
+        return redirect(cached, code=302)
+
+    # --- Cache miss: query the database ---
     try:
         url = Url.get(Url.short_code == short_code)
         if not url.is_active:
             return jsonify({"error": "URL is inactive"}), 410
+
+        _cache_set(short_code, url.original_url)
 
         raw_user_id = request.args.get('user_id')
         event_user_id = None

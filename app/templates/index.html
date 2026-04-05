@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>URL Shortener</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 20px;
+    }
+
+    h1 { font-size: 2rem; color: #1a1a2e; margin-bottom: 6px; }
+    .subtitle { color: #777; margin-bottom: 32px; font-size: 15px; }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 32px;
+      width: 100%;
+      max-width: 620px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+      margin-bottom: 24px;
+    }
+
+    .input-row { display: flex; gap: 10px; }
+
+    input[type="url"] {
+      flex: 1;
+      padding: 13px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="url"]:focus { border-color: #4f46e5; }
+
+    button.shorten-btn {
+      padding: 13px 26px;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    button.shorten-btn:hover { background: #4338ca; }
+    button.shorten-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    .result { margin-top: 22px; display: none; }
+    .result-label { font-size: 13px; color: #555; margin-bottom: 8px; }
+
+    .result-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 16px;
+      border-radius: 8px;
+      background: #f0fdf4;
+      border: 1.5px solid #86efac;
+    }
+    .result-box.existing {
+      background: #fefce8;
+      border-color: #fde047;
+    }
+
+    .result-link {
+      flex: 1;
+      color: #16a34a;
+      font-weight: 600;
+      text-decoration: none;
+      word-break: break-all;
+      font-size: 15px;
+    }
+    .result-box.existing .result-link { color: #b45309; }
+
+    .copy-btn {
+      padding: 7px 16px;
+      font-size: 13px;
+      background: #16a34a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .copy-btn:hover { background: #15803d; }
+    .result-box.existing .copy-btn { background: #b45309; }
+    .result-box.existing .copy-btn:hover { background: #92400e; }
+
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #fde047;
+      color: #713f12;
+      font-weight: 700;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+
+    .error-msg {
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: #fef2f2;
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      color: #dc2626;
+      font-size: 14px;
+      display: none;
+    }
+
+    h2 { font-size: 1rem; color: #1a1a2e; margin-bottom: 16px; font-weight: 600; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      color: #888;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid #f5f5f5;
+      color: #333;
+    }
+    td.short { font-weight: 600; }
+    td.original {
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #777;
+      font-size: 13px;
+    }
+    td a { color: #4f46e5; text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    .empty { text-align: center; color: #bbb; padding: 28px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <h1>URL Shortener</h1>
+  <p class="subtitle">Paste a long URL — get a short one instantly</p>
+
+  <div class="card">
+    <div class="input-row">
+      <input type="url" id="urlInput" placeholder="https://example.com/very/long/url/here" />
+      <button class="shorten-btn" id="shortenBtn" onclick="shortenUrl()">Shorten</button>
+    </div>
+
+    <div class="result" id="result">
+      <div class="result-label" id="resultLabel">Your short URL:</div>
+      <div class="result-box" id="resultBox">
+        <a class="result-link" id="resultLink" href="#" target="_blank"></a>
+        <button class="copy-btn" id="copyBtn" onclick="copyUrl()">Copy</button>
+      </div>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Recently Shortened</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Short URL</th>
+          <th>Original URL</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="historyBody">
+        <tr><td colspan="3" class="empty">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const BASE = window.location.origin;
+
+    async function shortenUrl() {
+      const input = document.getElementById('urlInput');
+      const url = input.value.trim();
+      const btn = document.getElementById('shortenBtn');
+      const errorEl = document.getElementById('errorMsg');
+
+      if (!url) return;
+
+      errorEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Shortening...';
+
+      try {
+        const res = await fetch('/urls', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ original_url: url })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Something went wrong');
+        }
+
+        showResult(data.short_code, res.status === 200);
+        loadHistory();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Shorten';
+      }
+    }
+
+    function showResult(shortCode, isExisting) {
+      const shortUrl = `${BASE}/${shortCode}`;
+      const resultEl = document.getElementById('result');
+      const resultBox = document.getElementById('resultBox');
+      const resultLink = document.getElementById('resultLink');
+      const resultLabel = document.getElementById('resultLabel');
+      const copyBtn = document.getElementById('copyBtn');
+
+      resultLink.href = shortUrl;
+      resultLink.textContent = shortUrl;
+      copyBtn.textContent = 'Copy';
+
+      if (isExisting) {
+        resultBox.className = 'result-box existing';
+        resultLabel.innerHTML = 'Already shortened <span class="badge">existing</span>';
+      } else {
+        resultBox.className = 'result-box';
+        resultLabel.textContent = 'Your short URL:';
+      }
+
+      resultEl.style.display = 'block';
+    }
+
+    async function copyUrl() {
+      const link = document.getElementById('resultLink').href;
+      await navigator.clipboard.writeText(link);
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/urls?per_page=10');
+        const urls = await res.json();
+        const tbody = document.getElementById('historyBody');
+
+        if (!urls.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="empty">No URLs yet</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = urls.map(u => `
+          <tr>
+            <td class="short"><a href="/${u.short_code}" target="_blank">${u.short_code}</a></td>
+            <td class="original" title="${u.original_url}">${u.original_url}</td>
+            <td>${new Date(u.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        console.error('Failed to load history', e);
+      }
+    }
+
+    document.getElementById('urlInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') shortenUrl();
+    });
+
+    loadHistory();
+  </script>
+</body>
+</html>
