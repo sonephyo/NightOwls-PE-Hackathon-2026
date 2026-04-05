@@ -35,8 +35,8 @@ jobs:
       - name: Build Docker image
         run: docker build -t nightowls-app .
 
-      - name: Start app + db
-        run: docker compose up -d app db
+      - name: Start app + db + nginx + redis
+        run: docker compose up -d app db nginx redis
 
       - name: Wait for app to be healthy
         run: |
